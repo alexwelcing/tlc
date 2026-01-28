@@ -1,0 +1,5 @@
+{
+  "name": "LegalFeed Pivoter",
+  "description": "A powerful data analysis tool designed to ingest legal news JSON feeds. Features interactive data tables, pivot-style visualizations, and one-click CSV export.",
+  "requestFramePermissions": []
+}

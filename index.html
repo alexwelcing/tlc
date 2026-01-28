@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The Legal Chronicle</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Merriweather:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400&display=swap');
+      
+      body {
+        font-family: 'Merriweather', serif;
+        background-color: #f4f1ea;
+        color: #1c1917;
+      }
+
+      /* Custom Scrollbar for Chrome/Safari/Webkit */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #e6e2d3;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #a8a29e;
+        border: 1px solid #f4f1ea;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #78716c;
+      }
+
+      /* 
+         Advanced Ticker Animations 
+      */
+
+      /* Effect 1: 3D Barrel/Stamp Rotation for the Title */
+      @keyframes press-rotate-in {
+        0% {
+          opacity: 0;
+          transform: perspective(1000px) rotateX(-90deg) translateY(-20px) scale(0.9);
+          filter: blur(4px) grayscale(100%);
+        }
+        40% {
+          opacity: 1;
+          transform: perspective(1000px) rotateX(10deg) translateY(0) scale(1.02);
+          filter: blur(0px) grayscale(0%);
+        }
+        70% {
+           transform: perspective(1000px) rotateX(-5deg) scale(0.99);
+        }
+        100% {
+          opacity: 1;
+          transform: perspective(1000px) rotateX(0deg) scale(1);
+          filter: none;
+        }
+      }
+
+      .animate-press-rotate {
+        animation: press-rotate-in 1.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        transform-origin: center bottom;
+        display: inline-block;
+        backface-visibility: hidden;
+      }
+
+      /* Effect 2: Ink Burn-In for the Date */
+      @keyframes ink-burn {
+        0% {
+          color: transparent;
+          text-shadow: 0 0 20px rgba(139, 0, 0, 0.1), 0 0 10px rgba(28, 25, 23, 0);
+          transform: scale(1.05);
+          filter: contrast(0.5);
+        }
+        30% {
+           color: rgba(139, 0, 0, 0.1); /* Faint red undertone like fresh ink */
+           text-shadow: 0 0 12px rgba(28, 25, 23, 0.3);
+        }
+        100% {
+          color: #8b0000; /* Final accent color */
+          text-shadow: 0 0 0 transparent;
+          transform: scale(1);
+          filter: contrast(1);
+        }
+      }
+      
+      /* Variation for regular text burn-in */
+      @keyframes ink-burn-black {
+         0% {
+          color: transparent;
+          text-shadow: 0 0 15px rgba(28, 25, 23, 0.1);
+          filter: blur(2px);
+        }
+        100% {
+          color: #57534e; 
+          text-shadow: 0 0 0 transparent;
+          filter: blur(0);
+        }
+      }
+
+      .animate-burn-in {
+        animation: ink-burn 2s ease-out forwards;
+        display: inline-block;
+      }
+      
+      .animate-burn-in-text {
+        animation: ink-burn-black 2.5s ease-out forwards;
+        display: inline-block;
+      }
+
+      /* 
+        Newspaper Styling & Filters 
+      */
+      
+      /* The "Wet Squishy" Distortion - REDUCED SCALE TO 2 */
+      .paper-distortion {
+        filter: url(#wavy-paper) contrast(1.05);
+      }
+
+      /* Vintage Image Filters */
+      .img-style-antique {
+        filter: grayscale(100%) contrast(150%) sepia(40%) brightness(0.9);
+        mix-blend-mode: multiply;
+      }
+      
+      .img-style-midcentury {
+        filter: sepia(30%) contrast(120%) saturate(60%) brightness(1.05);
+      }
+      
+      .img-style-retro {
+        filter: contrast(110%) saturate(140%) hue-rotate(-5deg);
+      }
+      
+      .img-style-modern {
+        filter: contrast(105%) brightness(105%);
+      }
+
+      /* Halftone Overlay Pattern */
+      .halftone-overlay {
+        background-image: radial-gradient(circle, #1c1917 1px, transparent 1.5px);
+        background-size: 4px 4px;
+        opacity: 0.15;
+      }
+
+      /* 3D Page Turn Animations */
+      @keyframes page-flip-next {
+        0% { transform: rotateY(0deg); opacity: 1; }
+        100% { transform: rotateY(-90deg); opacity: 0; }
+      }
+      
+      @keyframes page-appear-next {
+        0% { transform: rotateY(90deg); opacity: 0; }
+        100% { transform: rotateY(0deg); opacity: 1; }
+      }
+
+      .turn-page-exit {
+        transform-origin: left center;
+        animation: page-flip-next 0.6s ease-in forwards;
+      }
+
+      .turn-page-enter {
+        transform-origin: right center;
+        animation: page-appear-next 0.6s ease-out forwards;
+      }
+      
+      /* Video Overlay Gradient */
+      .video-gradient {
+        background: linear-gradient(to top, rgba(28, 25, 23, 0.9) 0%, rgba(28, 25, 23, 0) 60%);
+      }
+
+    </style>
+    <!-- Polyfill for process.env to avoid crashes in browser -->
+    <script>
+      window.process = window.process || {};
+      window.process.env = window.process.env || {};
+      window.process.env.NODE_ENV = window.process.env.NODE_ENV || 'development';
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react/": "https://esm.sh/react@18.2.0/",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "react-dom/": "https://esm.sh/react-dom@18.2.0/",
+    "lucide-react": "https://esm.sh/lucide-react@0.263.1?external=react,react-dom",
+    "recharts": "https://esm.sh/recharts@2.12.0?external=react,react-dom",
+    "@tanstack/react-table": "https://esm.sh/@tanstack/react-table@8.11.8?external=react,react-dom",
+    "@google/genai": "https://esm.sh/@google/genai"
+  }
+}
+</script>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            serif: ['Merriweather', 'serif'],
+            display: ['Playfair Display', 'serif'],
+            branding: ['Cinzel', 'serif'],
+          },
+          colors: {
+            paper: '#f4f1ea',
+            ink: '#1c1917',
+            accent: '#8b0000', // Dark Red
+            'accent-hover': '#660000',
+            sepia: '#e6e2d3',
+          }
+        }
+      }
+    }
+</script>
+</head>
+  <body class="bg-paper text-ink selection:bg-stone-300 selection:text-black">
+    <!-- SVG Filters for Paper Effects -->
+    <svg style="position: absolute; width: 0; height: 0; pointer-events: none;">
+      <defs>
+        <!-- Wavy distortion for the "wet squishy" feel -->
+        <!-- Reduced scale from 4 to 2 -->
+        <filter id="wavy-paper">
+           <feTurbulence type="fractalNoise" baseFrequency="0.002" numOctaves="3" result="noise" />
+           <feDisplacementMap in="SourceGraphic" in2="noise" scale="2" />
+        </filter>
+        
+        <!-- Grain for images -->
+        <filter id="grain">
+          <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch" />
+          <feColorMatrix type="saturate" values="0" />
+        </filter>
+      </defs>
+    </svg>
+
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
