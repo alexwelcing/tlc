@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { LayoutGrid, Table as TableIcon, Download, RefreshCw, BarChart3, Newspaper, FileText, ChevronDown, ChevronUp, ScrollText, Trash2, Calendar, Database } from 'lucide-react';
+import { Table as TableIcon, Download, RefreshCw, BarChart3, Newspaper } from 'lucide-react';
 import FileUpload from './components/FileUpload';
 import MetricsDashboard from './components/MetricsDashboard';
 import DataTable from './components/DataTable';
@@ -41,25 +41,20 @@ const VintageTicker: React.FC = () => {
   useEffect(() => {
     const timer = setInterval(() => {
       setIndex((prev) => (prev + 1) % PUBLICATIONS.length);
-    }, 4500); // Rotate every 4.5 seconds
+    }, 4500); 
     return () => clearInterval(timer);
   }, []);
 
   const current = PUBLICATIONS[index];
 
   return (
-    <div className="flex-1 min-w-[200px] overflow-hidden flex items-center">
+    <div className="flex-1 min-w-[200px] overflow-hidden flex items-center justify-start md:justify-center">
        <div key={index} className="inline-flex items-baseline gap-3">
           <span className="animate-press-rotate font-black text-ink font-branding tracking-tight text-lg leading-none transform-style-3d">
             {current.name}
           </span>
-          <div className="inline-flex items-baseline gap-2">
-            <span className="animate-burn-in text-[10px] font-bold tracking-widest uppercase text-accent border-b border-accent/20 pb-0.5">
-                {current.date}
-            </span>
-            <span className="hidden sm:inline animate-burn-in-text text-[10px] text-stone-500 font-serif italic">
-                — {current.loc}
-            </span>
+          <div className="hidden sm:inline-flex items-baseline gap-2 opacity-60">
+             <span className="text-[10px] font-serif italic">— {current.loc}</span>
           </div>
        </div>
     </div>
@@ -94,7 +89,6 @@ const App: React.FC = () => {
   const [loadedFeeds, setLoadedFeeds] = useState<LoadedFeed[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('feed'); 
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
-  const [showSources, setShowSources] = useState(false);
   const [selectedArticle, setSelectedArticle] = useState<FeedItem | null>(null);
 
   // Filter State
@@ -105,9 +99,7 @@ const App: React.FC = () => {
 
   const handleDataLoaded = (files: { data: FeedData, filename: string }[]) => {
     const newFeeds: LoadedFeed[] = files.map((file, index) => {
-      // Calculate date range for this specific feed
       const dates = file.data.items.map(i => new Date(i.publishedAt).getTime()).filter(t => !isNaN(t));
-      
       const range = dates.length > 0 ? {
           start: Math.min(...dates),
           end: Math.max(...dates)
@@ -120,11 +112,9 @@ const App: React.FC = () => {
         dateRange: range
       };
     });
-    
     setLoadedFeeds(prev => [...prev, ...newFeeds]);
     if (loadedFeeds.length === 0) {
       setViewMode('feed');
-      setShowSources(true); // Auto-show sources on first load so user sees what happened
     }
   };
 
@@ -132,7 +122,6 @@ const App: React.FC = () => {
     setLoadedFeeds(prev => prev.filter(f => f.id !== id));
   };
   
-  // Effect to handle full reset if feeds are empty
   useEffect(() => {
       if (loadedFeeds.length === 0 && viewMode !== 'feed') {
           handleReset();
@@ -142,7 +131,6 @@ const App: React.FC = () => {
   const handleReset = () => {
     setLoadedFeeds([]);
     setViewMode('feed');
-    setShowSources(false);
     clearFilters();
   };
 
@@ -153,7 +141,6 @@ const App: React.FC = () => {
     setSelectedSource('');
   };
 
-  // Flatten items
   const allItems = useMemo<FeedItem[]>(() => {
     return loadedFeeds.flatMap((feed) => 
       feed.data.items.map(item => ({
@@ -165,7 +152,6 @@ const App: React.FC = () => {
     );
   }, [loadedFeeds]);
 
-  // Calculate Global Date Range for Header
   const globalDateRange = useMemo(() => {
     if (allItems.length === 0) return null;
     const timestamps = allItems.map(i => new Date(i.publishedAt).getTime()).filter(t => !isNaN(t));
@@ -178,7 +164,6 @@ const App: React.FC = () => {
     };
   }, [allItems]);
 
-  // Compute Faceted Counts
   const facets = useMemo(() => {
      const currentFilters = { search: searchTerm, pub: selectedPub, cat: selectedCat, src: selectedSource };
      
@@ -221,166 +206,68 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-paper font-serif text-ink">
+    <div className="min-h-screen bg-[#f4f1ea] font-serif text-ink selection:bg-stone-300 selection:text-black pb-20">
+      
       {/* Newspaper Masthead */}
-      <header className="border-b-4 border-double border-ink bg-paper pt-6 pb-2 sticky top-0 z-40 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-4">
-                 <h1 className="text-4xl md:text-6xl font-branding font-black uppercase tracking-tight text-ink border-b-2 border-ink pb-4 mb-2">
-                    The Legal Chronicle
-                 </h1>
-                 <div className="flex flex-col md:flex-row justify-between items-center text-xs md:text-sm font-branding uppercase border-b border-ink pb-1 px-2 gap-2 md:gap-0">
-                    <VintageTicker />
-                    <div className="flex items-center gap-4 md:gap-8 flex-shrink-0">
-                        {globalDateRange ? (
-                             <span className="font-bold">c. {globalDateRange.startYear}–{globalDateRange.endYear}</span>
-                        ) : (
-                             <span>Volume {loadedFeeds.length > 0 ? loadedFeeds.length : 'I'}</span>
-                        )}
-                        <span className="hidden sm:inline">{new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
-                        <span>Client Privilege</span>
-                    </div>
-                 </div>
-            </div>
+      <header className="pt-8 pb-4 bg-[#f4f1ea]">
+        <div className="max-w-7xl mx-auto px-4 text-center">
+            {/* Title */}
+             <h1 className="text-5xl md:text-8xl font-branding font-black uppercase tracking-tighter text-ink mb-3 leading-none scale-y-90">
+                The Legal Chronicle
+             </h1>
+             
+             {/* Simple Divider Line with Meta Info */}
+             <div className="border-y-2 border-ink py-1.5 mb-8 flex flex-col md:flex-row justify-between items-center text-[10px] md:text-xs font-branding uppercase tracking-[0.15em] gap-2">
+                <div className="flex-1 text-left hidden md:block"><VintageTicker /></div>
+                <div className="flex-1 text-center font-bold px-4">
+                    {globalDateRange ? `c. ${globalDateRange.startYear}–${globalDateRange.endYear}` : `Vol. ${Math.max(1, loadedFeeds.length)}`} 
+                    <span className="mx-2">•</span> 
+                    Printed in Digital Ink
+                </div>
+                <div className="flex-1 text-right hidden md:block">{new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+             </div>
 
-            {/* Navigation / Toolbar */}
-            {loadedFeeds.length > 0 && (
-              <div className="flex flex-col md:flex-row justify-between items-center py-2 gap-4">
-                <nav className="flex items-center gap-6 font-branding text-sm font-bold tracking-widest">
-                  <button
-                    onClick={() => setViewMode('feed')}
-                    className={`flex items-center gap-2 pb-1 border-b-2 transition-all duration-200 ${
-                      viewMode === 'feed' 
-                        ? 'border-accent text-accent' 
-                        : 'border-transparent text-stone-600 hover:text-ink hover:border-stone-300'
-                    }`}
-                  >
-                    <Newspaper size={16} />
-                    Front Page
-                  </button>
-                  <button
-                    onClick={() => setViewMode('analytics')}
-                    className={`flex items-center gap-2 pb-1 border-b-2 transition-all duration-200 ${
-                      viewMode === 'analytics' 
-                        ? 'border-accent text-accent' 
-                        : 'border-transparent text-stone-600 hover:text-ink hover:border-stone-300'
-                    }`}
-                  >
-                    <BarChart3 size={16} />
-                    Market Data
-                  </button>
-                  <button
-                    onClick={() => setViewMode('table')}
-                    className={`flex items-center gap-2 pb-1 border-b-2 transition-all duration-200 ${
-                      viewMode === 'table' 
-                        ? 'border-accent text-accent' 
-                        : 'border-transparent text-stone-600 hover:text-ink hover:border-stone-300'
-                    }`}
-                  >
-                    <TableIcon size={16} />
-                    The Ledger
-                  </button>
-                </nav>
-
-                <div className="flex items-center gap-3">
-                    <button
-                    onClick={() => setIsExportModalOpen(true)}
-                    className="flex items-center gap-2 px-4 py-1.5 border-2 border-ink text-ink font-branding text-xs font-bold uppercase hover:bg-ink hover:text-paper transition-all active:translate-y-0.5"
+             {/* Minimalist Navigation */}
+             {loadedFeeds.length > 0 && (
+                <div className="flex justify-center flex-wrap gap-x-8 gap-y-2 text-[11px] font-branding font-bold uppercase tracking-[0.2em] text-stone-500">
+                    <button 
+                        onClick={() => setViewMode('feed')} 
+                        className={`hover:text-ink transition-colors pb-1 border-b-2 ${viewMode === 'feed' ? 'text-accent border-accent' : 'border-transparent'}`}
                     >
-                    <Download size={14} />
-                    Export
+                        Front Page
                     </button>
-                    
-                    <button
-                        onClick={handleReset}
-                        className="p-1.5 text-stone-500 hover:text-accent transition-colors"
-                        title="Start Over"
+                    <button 
+                        onClick={() => setViewMode('analytics')} 
+                        className={`hover:text-ink transition-colors pb-1 border-b-2 ${viewMode === 'analytics' ? 'text-accent border-accent' : 'border-transparent'}`}
                     >
-                        <RefreshCw size={18} />
+                        Market Data
+                    </button>
+                    <button 
+                        onClick={() => setViewMode('table')} 
+                        className={`hover:text-ink transition-colors pb-1 border-b-2 ${viewMode === 'table' ? 'text-accent border-accent' : 'border-transparent'}`}
+                    >
+                        The Ledger
+                    </button>
+                    <span className="text-stone-300">|</span>
+                    <button onClick={() => setIsExportModalOpen(true)} className="hover:text-ink transition-colors pb-1 border-b-2 border-transparent">
+                        Export
+                    </button>
+                    <button onClick={handleReset} className="hover:text-accent transition-colors pb-1 border-b-2 border-transparent" title="Reset">
+                        Reset
                     </button>
                 </div>
-              </div>
-            )}
+             )}
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {loadedFeeds.length === 0 ? (
           <FileUpload onDataLoaded={handleDataLoaded} />
         ) : (
-          <div className="space-y-8">
-            <div className="flex flex-col gap-6">
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-ink pb-6">
-                <div className="w-full">
-                  <div className="flex items-baseline justify-between mb-2">
-                     <h2 className="text-3xl font-display font-bold text-ink italic">
-                        {viewMode === 'analytics' && 'Market Analysis'}
-                        {viewMode === 'table' && 'Detailed Manifest'}
-                        {viewMode === 'feed' && 'Latest Headlines'}
-                     </h2>
-                     <FileUpload onDataLoaded={handleDataLoaded} isCompact={true} />
-                  </div>
-                  
-                  {/* Collapsible Source List (Wire Services) */}
-                  <div className="mt-1">
-                    <button 
-                      onClick={() => setShowSources(!showSources)}
-                      className="flex items-center gap-2 text-sm font-serif italic text-stone-600 hover:text-accent transition-colors group"
-                    >
-                      <span>
-                        Reporting on <span className="font-bold text-ink not-italic">{allItems.length}</span> stories 
-                        from <span className="font-bold text-ink not-italic">{loadedFeeds.length}</span> wires
-                      </span>
-                      {showSources ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    </button>
-                    
-                    {showSources && (
-                      <div className="mt-4 animate-in slide-in-from-top-2 duration-300">
-                        <div className="bg-sepia/50 border border-ink p-4 shadow-inner">
-                            <div className="text-xs font-branding font-bold text-stone-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                <Database size={12} /> Active Wire Connections
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                                {loadedFeeds.map(feed => (
-                                    <div key={feed.id} className="relative group bg-paper border border-stone-300 p-3 shadow-sm hover:shadow-md transition-shadow flex items-start gap-3">
-                                        <div className="p-2 bg-stone-100 border border-stone-200">
-                                            <FileText size={20} className="text-stone-400" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="font-bold text-sm text-ink truncate" title={feed.filename}>
-                                                {feed.filename}
-                                            </div>
-                                            <div className="text-[10px] font-mono text-stone-500 mt-0.5 flex flex-col">
-                                                <span>{feed.data.items.length} records</span>
-                                                {feed.dateRange.start !== -Infinity ? (
-                                                    <span className="text-stone-400">
-                                                        {new Date(feed.dateRange.start).getFullYear()} - {new Date(feed.dateRange.end).getFullYear()}
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-stone-300">Date unknown</span>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <button 
-                                            onClick={() => handleRemoveFeed(feed.id)}
-                                            className="absolute top-2 right-2 p-1 text-stone-300 hover:text-accent hover:bg-accent/10 rounded transition-colors"
-                                            title="Disconnect Wire"
-                                        >
-                                            <Trash2 size={14} />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Global Filter Bar */}
-              {viewMode !== 'table' && (
-                <div className="sticky top-[180px] z-30 animate-in fade-in slide-in-from-top-4 duration-300">
+          <div>
+            {/* Filters - Collapsible & Tucked */}
+            {viewMode !== 'table' && (
+               <div className="mb-10 flex justify-center">
                   <FilterBar
                     searchTerm={searchTerm}
                     onSearchChange={setSearchTerm}
@@ -396,12 +283,15 @@ const App: React.FC = () => {
                     resultCount={filteredItems.length}
                     totalCount={allItems.length}
                     onClear={clearFilters}
+                    loadedFeeds={loadedFeeds}
+                    onAddFeed={(files) => handleDataLoaded(files)}
+                    onRemoveFeed={handleRemoveFeed}
                   />
-                </div>
-              )}
-            </div>
+               </div>
+            )}
 
-            <div className="min-h-[500px] border-t-2 border-ink pt-6">
+            {/* Content Area - Min Height Ensures Paper Feel */}
+            <div className="min-h-[85vh]">
                 {viewMode === 'analytics' && <MetricsDashboard items={filteredItems} />}
                 {viewMode === 'table' && <DataTable data={allItems} />}
                 {viewMode === 'feed' && <NewsFeed items={filteredItems} onArticleClick={setSelectedArticle} />}
@@ -410,20 +300,12 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="border-t-4 border-double border-ink mt-12 py-8 bg-sepia text-center">
-        <p className="font-branding text-xs text-stone-600 uppercase tracking-widest">
-            The Legal Chronicle &copy; {new Date().getFullYear()} • Printed in Digital Ink
-        </p>
-      </footer>
-
       <ExportModal 
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
         onExport={handleExport}
       />
       
-      {/* Article Sidebar */}
       <ArticleSidebar 
         article={selectedArticle} 
         onClose={() => setSelectedArticle(null)} 
