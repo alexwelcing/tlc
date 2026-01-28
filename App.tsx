@@ -298,9 +298,11 @@ const App: React.FC = () => {
 
       <header className="pt-8 pb-4 bg-[#f4f1ea]">
         <div className="max-w-7xl mx-auto px-4 text-center">
-             <h1 className="text-5xl md:text-8xl font-branding font-black uppercase tracking-tighter text-ink mb-3 leading-none scale-y-95">
-                The Legal Chronicle
-             </h1>
+             <button onClick={handleReset} className="block mx-auto hover:opacity-80 transition-opacity">
+                <h1 className="text-5xl md:text-8xl font-branding font-black uppercase tracking-tighter text-ink mb-3 leading-none scale-y-95">
+                    The Legal Chronicle
+                </h1>
+             </button>
              
              <div className="border-y-2 border-ink py-1.5 mb-8 flex flex-col md:flex-row justify-between items-center text-[10px] md:text-xs font-branding uppercase tracking-[0.15em] gap-2">
                 <div className="flex-1 text-left hidden md:block">
@@ -361,7 +363,7 @@ const App: React.FC = () => {
             )}
             <div className="min-h-[85vh]">
                 {viewMode === 'analytics' && <MetricsDashboard items={filteredItems} onCategorySelect={handleCategorySelect} />}
-                {viewMode === 'table' && <DataTable data={allItems} />}
+                {viewMode === 'table' && <DataTable data={allItems} onCategorySelect={handleCategorySelect} />}
                 {viewMode === 'feed' && (
                   <NewsFeed 
                     items={filteredItems} 

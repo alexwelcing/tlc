@@ -20,6 +20,7 @@ import { formatDate } from '../utils';
 
 interface DataTableProps {
   data: FeedItem[];
+  onCategorySelect?: (category: string) => void;
 }
 
 function Filter({ column, table }: { column: Column<FeedItem, unknown>; table: Table<FeedItem> }) {
@@ -81,7 +82,7 @@ function Filter({ column, table }: { column: Column<FeedItem, unknown>; table: T
   );
 }
 
-const DataTable: React.FC<DataTableProps> = ({ data }) => {
+const DataTable: React.FC<DataTableProps> = ({ data, onCategorySelect }) => {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
@@ -149,9 +150,16 @@ const DataTable: React.FC<DataTableProps> = ({ data }) => {
             <div className="flex flex-wrap gap-1 max-w-[250px]">
                 {catsToRender.length > 0 ? (
                     catsToRender.slice(0, 3).map((cat, i) => (
-                        <span key={i} className="text-[10px] font-mono text-stone-500 border border-stone-300 px-1 bg-white/50">
+                        <button 
+                          key={i} 
+                          onClick={() => onCategorySelect && onCategorySelect(cat.name)}
+                          className={`
+                            text-[10px] font-mono text-stone-500 border border-stone-300 px-1 bg-white/50
+                            ${onCategorySelect ? 'hover:bg-ink hover:text-paper hover:border-ink cursor-pointer' : ''}
+                          `}
+                        >
                             {cat.name}
-                        </span>
+                        </button>
                     ))
                 ) : (
                     <span className="text-stone-300 text-xs">-</span>
@@ -174,7 +182,7 @@ const DataTable: React.FC<DataTableProps> = ({ data }) => {
         cell: info => <span className="text-stone-500 text-xs font-mono text-right block">{info.getValue() as number}</span>,
       }
     ],
-    []
+    [onCategorySelect]
   );
 
   const table = useReactTable({
