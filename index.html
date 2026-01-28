@@ -12,9 +12,10 @@
         font-family: 'Merriweather', serif;
         background-color: #f4f1ea;
         color: #1c1917;
+        overflow-x: hidden;
       }
 
-      /* Custom Scrollbar for Chrome/Safari/Webkit */
+      /* Custom Scrollbar */
       ::-webkit-scrollbar {
         width: 8px;
         height: 8px;
@@ -30,145 +31,76 @@
         background: #78716c;
       }
 
-      /* 
-         Advanced Ticker Animations 
-      */
-
-      /* Effect 1: 3D Barrel/Stamp Rotation for the Title */
+      /* Animations */
       @keyframes press-rotate-in {
-        0% {
-          opacity: 0;
-          transform: perspective(1000px) rotateX(-90deg) translateY(-20px) scale(0.9);
-          filter: blur(4px) grayscale(100%);
+        0% { opacity: 0; transform: perspective(1000px) rotateX(-90deg) translateY(-20px) scale(0.9); filter: blur(4px) grayscale(100%); }
+        40% { opacity: 1; transform: perspective(1000px) rotateX(10deg) translateY(0) scale(1.02); filter: blur(0px) grayscale(0%); }
+        70% { transform: perspective(1000px) rotateX(-5deg) scale(0.99); }
+        100% { opacity: 1; transform: perspective(1000px) rotateX(0deg) scale(1); filter: none; }
+      }
+      .animate-press-rotate { animation: press-rotate-in 1.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; transform-origin: center bottom; display: inline-block; backface-visibility: hidden; }
+
+      /* Filters */
+      .paper-distortion { filter: url(#wavy-paper) contrast(1.05); }
+      .img-style-modern { filter: contrast(105%) brightness(105%); }
+      .img-style-retro { filter: contrast(110%) saturate(140%) hue-rotate(-5deg); }
+
+      /* 
+         ENHANCED REALISTIC PAGE TURN 
+         Simulates a page peeling from right to left (Next) or left to right (Prev)
+      */
+      
+      .perspective-container {
+        perspective: 2500px;
+        perspective-origin: 50% 50%;
+      }
+
+      /* Exit: The current page lifts up and rotates away to the left */
+      @keyframes book-flip-exit {
+        0% { 
+            transform: rotateY(0deg) translateZ(0);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            filter: brightness(100%);
         }
         40% {
-          opacity: 1;
-          transform: perspective(1000px) rotateX(10deg) translateY(0) scale(1.02);
-          filter: blur(0px) grayscale(0%);
+            filter: brightness(95%); /* Slight shadow as it turns */
         }
-        70% {
-           transform: perspective(1000px) rotateX(-5deg) scale(0.99);
-        }
-        100% {
-          opacity: 1;
-          transform: perspective(1000px) rotateX(0deg) scale(1);
-          filter: none;
-        }
-      }
-
-      .animate-press-rotate {
-        animation: press-rotate-in 1.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-        transform-origin: center bottom;
-        display: inline-block;
-        backface-visibility: hidden;
-      }
-
-      /* Effect 2: Ink Burn-In for the Date */
-      @keyframes ink-burn {
-        0% {
-          color: transparent;
-          text-shadow: 0 0 20px rgba(139, 0, 0, 0.1), 0 0 10px rgba(28, 25, 23, 0);
-          transform: scale(1.05);
-          filter: contrast(0.5);
-        }
-        30% {
-           color: rgba(139, 0, 0, 0.1); /* Faint red undertone like fresh ink */
-           text-shadow: 0 0 12px rgba(28, 25, 23, 0.3);
-        }
-        100% {
-          color: #8b0000; /* Final accent color */
-          text-shadow: 0 0 0 transparent;
-          transform: scale(1);
-          filter: contrast(1);
+        100% { 
+            transform: rotateY(-110deg) translateZ(100px) translateX(-50px);
+            opacity: 0;
+            box-shadow: 20px 20px 60px rgba(0,0,0,0.5);
+            filter: brightness(80%);
         }
       }
       
-      /* Variation for regular text burn-in */
-      @keyframes ink-burn-black {
-         0% {
-          color: transparent;
-          text-shadow: 0 0 15px rgba(28, 25, 23, 0.1);
-          filter: blur(2px);
+      /* Enter: The new page lands from the right */
+      @keyframes book-flip-enter {
+        0% { 
+            transform: rotateY(90deg) translateZ(100px) translateX(50px);
+            opacity: 0;
+            filter: brightness(110%); /* Bright as it catches light */
         }
-        100% {
-          color: #57534e; 
-          text-shadow: 0 0 0 transparent;
-          filter: blur(0);
+        100% { 
+            transform: rotateY(0deg) translateZ(0);
+            opacity: 1;
+            filter: brightness(100%);
         }
-      }
-
-      .animate-burn-in {
-        animation: ink-burn 2s ease-out forwards;
-        display: inline-block;
-      }
-      
-      .animate-burn-in-text {
-        animation: ink-burn-black 2.5s ease-out forwards;
-        display: inline-block;
-      }
-
-      /* 
-        Newspaper Styling & Filters 
-      */
-      
-      /* The "Wet Squishy" Distortion - REDUCED SCALE TO 2 */
-      .paper-distortion {
-        filter: url(#wavy-paper) contrast(1.05);
-      }
-
-      /* Vintage Image Filters */
-      .img-style-antique {
-        filter: grayscale(100%) contrast(150%) sepia(40%) brightness(0.9);
-        mix-blend-mode: multiply;
-      }
-      
-      .img-style-midcentury {
-        filter: sepia(30%) contrast(120%) saturate(60%) brightness(1.05);
-      }
-      
-      .img-style-retro {
-        filter: contrast(110%) saturate(140%) hue-rotate(-5deg);
-      }
-      
-      .img-style-modern {
-        filter: contrast(105%) brightness(105%);
-      }
-
-      /* Halftone Overlay Pattern */
-      .halftone-overlay {
-        background-image: radial-gradient(circle, #1c1917 1px, transparent 1.5px);
-        background-size: 4px 4px;
-        opacity: 0.15;
-      }
-
-      /* 3D Page Turn Animations */
-      @keyframes page-flip-next {
-        0% { transform: rotateY(0deg); opacity: 1; }
-        100% { transform: rotateY(-90deg); opacity: 0; }
-      }
-      
-      @keyframes page-appear-next {
-        0% { transform: rotateY(90deg); opacity: 0; }
-        100% { transform: rotateY(0deg); opacity: 1; }
       }
 
       .turn-page-exit {
-        transform-origin: left center;
-        animation: page-flip-next 0.6s ease-in forwards;
+        transform-origin: center left;
+        animation: book-flip-exit 0.8s cubic-bezier(0.645, 0.045, 0.355, 1.000) forwards;
+        z-index: 50;
       }
 
       .turn-page-enter {
-        transform-origin: right center;
-        animation: page-appear-next 0.6s ease-out forwards;
-      }
-      
-      /* Video Overlay Gradient */
-      .video-gradient {
-        background: linear-gradient(to top, rgba(28, 25, 23, 0.9) 0%, rgba(28, 25, 23, 0) 60%);
+        transform-origin: center left;
+        animation: book-flip-enter 0.8s cubic-bezier(0.645, 0.045, 0.355, 1.000) forwards;
+        z-index: 40;
       }
 
     </style>
-    <!-- Polyfill for process.env to avoid crashes in browser -->
+    <!-- Polyfill for process.env -->
     <script>
       window.process = window.process || {};
       window.process.env = window.process.env || {};
@@ -201,7 +133,7 @@
           colors: {
             paper: '#f4f1ea',
             ink: '#1c1917',
-            accent: '#8b0000', // Dark Red
+            accent: '#8b0000', 
             'accent-hover': '#660000',
             sepia: '#e6e2d3',
           }
@@ -211,24 +143,14 @@
 </script>
 </head>
   <body class="bg-paper text-ink selection:bg-stone-300 selection:text-black">
-    <!-- SVG Filters for Paper Effects -->
     <svg style="position: absolute; width: 0; height: 0; pointer-events: none;">
       <defs>
-        <!-- Wavy distortion for the "wet squishy" feel -->
-        <!-- Reduced scale from 4 to 2 -->
         <filter id="wavy-paper">
            <feTurbulence type="fractalNoise" baseFrequency="0.002" numOctaves="3" result="noise" />
            <feDisplacementMap in="SourceGraphic" in2="noise" scale="2" />
         </filter>
-        
-        <!-- Grain for images -->
-        <filter id="grain">
-          <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch" />
-          <feColorMatrix type="saturate" values="0" />
-        </filter>
       </defs>
     </svg>
-
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
