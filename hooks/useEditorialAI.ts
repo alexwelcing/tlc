@@ -2,27 +2,9 @@ import { useState, useCallback } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { FeedItem } from '../types';
 
-// Safely access API Key to prevent "process is not defined" crashes in browser
-const getApiKey = () => {
-  try {
-    // Check if process exists before accessing it
-    if (typeof process !== 'undefined' && process.env) {
-      return process.env.API_KEY;
-    }
-    // Fallback for some bundlers that define it globally
-    // @ts-ignore
-    if (typeof window !== 'undefined' && window.process && window.process.env) {
-        // @ts-ignore
-        return window.process.env.API_KEY;
-    }
-    return undefined;
-  } catch (e) {
-    console.warn("Environment access failed");
-    return undefined;
-  }
-};
-
-const API_KEY = getApiKey();
+// Global cache to prevent re-fetching across the entire app session
+const globalAssetCache: Record<string, EditorialAssets> = {};
+const pendingRequests = new Set<string>();
 
 export type GenerationStatus = 'idle' | 'grounding' | 'imagining' | 'filming' | 'ready' | 'error';
 
@@ -34,34 +16,33 @@ interface EditorialAssets {
 }
 
 export const useEditorialAI = () => {
-  // We use a Map to store assets per article ID to prevent re-generation on re-renders
-  const [assets, setAssets] = useState<Record<string, EditorialAssets>>({});
+  const [assets, setAssets] = useState<Record<string, EditorialAssets>>(globalAssetCache);
 
   const generateEditorialIllustration = useCallback(async (item: FeedItem, styleEra: string, force = false) => {
-    if (!API_KEY) {
-      console.warn("No API Key found for GenAI");
-      return;
-    }
+    // @google/genai guidelines: API key must be obtained exclusively from process.env.API_KEY.
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) return;
     
-    // Prevent double generation unless forced
-    if (assets[item.id]?.status !== 'idle' && assets[item.id]?.status && !force) return;
+    const existing = globalAssetCache[item.id];
+    if (existing && existing.status === 'ready' && !force) return;
+    if (pendingRequests.has(item.id) && !force) return;
 
-    // Set initial loading state
-    setAssets(prev => ({
-      ...prev,
-      [item.id]: { imageUrl: null, videoUrl: null, status: 'grounding' }
-    }));
+    pendingRequests.add(item.id);
+    
+    const updateLocalState = (newState: EditorialAssets) => {
+      globalAssetCache[item.id] = newState;
+      setAssets(prev => ({ ...prev, [item.id]: newState }));
+    };
+
+    updateLocalState({ imageUrl: null, videoUrl: null, status: 'grounding' });
 
     try {
-      const ai = new GoogleGenAI({ apiKey: API_KEY });
+      // @google/genai guidelines: Create a new GoogleGenAI instance right before making an API call.
+      const ai = new GoogleGenAI({ apiKey });
 
-      // Step 1: Search Grounding
-      // We ask for visual metaphors based on real-world context
-      const groundingPrompt = `I need a visual description for a newspaper editorial illustration about: "${item.title}". 
-      Summary: ${item.summary.slice(0, 150)}. 
-      Publication Era Style: ${styleEra}.
-      Find 3 key visual symbols related to this specific news topic using Google Search.
-      Output ONLY a comma-separated list of visual elements.`;
+      // Step 1: Search Grounding (Lightweight Flash)
+      const groundingPrompt = `Quick visual metaphor for news headline: "${item.title}". 
+      Era Style: ${styleEra}. Output only 3 objects separated by commas.`;
 
       let visualElements = "";
       try {
@@ -70,82 +51,80 @@ export const useEditorialAI = () => {
             contents: groundingPrompt,
             config: { tools: [{ googleSearch: {} }] }
         });
+        // @google/genai guidelines: Use .text property (not a method) to extract text content.
         visualElements = groundingResp.text || "Law, Justice, Paperwork";
       } catch (e) {
-        console.warn("Grounding failed, falling back to basic metadata", e);
         visualElements = `${item.primaryCategory?.name || 'Legal'}, Courtroom, Documents`;
       }
 
       // Step 2: Image Generation
-      setAssets(prev => ({ ...prev, [item.id]: { ...prev[item.id], status: 'imagining' } }));
+      updateLocalState({ imageUrl: null, videoUrl: null, status: 'imagining' });
 
-      const imagePrompt = `Editorial illustration for a newspaper. 
-      Style: ${styleEra} print aesthetic. High contrast, ink bleed, halftone textures.
-      Subject: ${visualElements}. 
-      Context: ${item.title}.
-      Composition: Cinematic, artistic, no text, serious tone.`;
+      const imagePrompt = `Newspaper editorial illustration. Style: ${styleEra} woodcut print. Subject: ${visualElements}. No text. Cinematic high contrast ink bleed.`;
 
       const imageResp = await ai.models.generateContent({
-        model: 'gemini-3-pro-image-preview',
+        model: 'gemini-2.5-flash-image',
         contents: { parts: [{ text: imagePrompt }] },
         config: {
           imageConfig: {
-            aspectRatio: "4:3", // Good for editorial
-            imageSize: "1K" // Faster loading
+            aspectRatio: "4:3"
           }
         }
       });
 
       let base64Image = "";
-      for (const part of imageResp.candidates[0].content.parts) {
-        if (part.inlineData) {
-          base64Image = part.inlineData.data;
-          break;
+      if (imageResp.candidates?.[0]?.content?.parts) {
+        for (const part of imageResp.candidates[0].content.parts) {
+          if (part.inlineData) {
+            base64Image = part.inlineData.data;
+            break;
+          }
         }
       }
 
       if (base64Image) {
-        setAssets(prev => ({
-          ...prev,
-          [item.id]: { 
-            imageUrl: `data:image/png;base64,${base64Image}`, 
-            videoUrl: null, 
-            status: 'ready',
-            caption: visualElements
-          }
-        }));
-      } else {
-        throw new Error("No image data returned");
+        updateLocalState({ 
+          imageUrl: `data:image/png;base64,${base64Image}`, 
+          videoUrl: null, 
+          status: 'ready',
+          caption: visualElements
+        });
       }
 
     } catch (err) {
       console.error("Editorial Generation Failed:", err);
-      setAssets(prev => ({
-        ...prev,
-        [item.id]: { ...prev[item.id], status: 'error' }
-      }));
+      // Fixed: Explicitly typed 'error' to match GenerationStatus union.
+      const errorStatus: GenerationStatus = 'error';
+      updateLocalState({ 
+        imageUrl: globalAssetCache[item.id]?.imageUrl || null, 
+        videoUrl: globalAssetCache[item.id]?.videoUrl || null, 
+        status: errorStatus 
+      });
+    } finally {
+      pendingRequests.delete(item.id);
     }
-  }, [assets]);
-
+  }, []);
 
   const animateEditorial = useCallback(async (itemId: string, itemTitle: string) => {
-    const currentAsset = assets[itemId];
-    if (!currentAsset?.imageUrl || !API_KEY) return;
+    const apiKey = process.env.API_KEY;
+    const currentAsset = globalAssetCache[itemId];
+    if (!currentAsset?.imageUrl || !apiKey) return;
 
+    // Fixed: Explicitly typed 'filming' to match GenerationStatus union and prevent widening.
+    const filmingStatus: GenerationStatus = 'filming';
     setAssets(prev => ({
       ...prev,
-      [itemId]: { ...prev[itemId], status: 'filming' }
+      [itemId]: { ...prev[itemId], status: filmingStatus }
     }));
 
     try {
-      const ai = new GoogleGenAI({ apiKey: API_KEY });
-      
-      // Veo Generation
+      // @google/genai guidelines: Create a new GoogleGenAI instance right before making an API call.
+      const ai = new GoogleGenAI({ apiKey });
       const base64Data = currentAsset.imageUrl.split(',')[1];
       
       let operation = await ai.models.generateVideos({
         model: 'veo-3.1-fast-generate-preview',
-        prompt: `Cinematic news clip, slight camera pan, dynamic movement, 1980s broadcast style overlay. Subject: ${itemTitle}`,
+        prompt: `Subtle motion, pan over the illustration of: ${itemTitle}`,
         image: {
             imageBytes: base64Data,
             mimeType: 'image/png'
@@ -157,37 +136,43 @@ export const useEditorialAI = () => {
         }
       });
 
-      // Poll for completion
       while (!operation.done) {
-        await new Promise(resolve => setTimeout(resolve, 3000)); // Poll every 3s
+        await new Promise(resolve => setTimeout(resolve, 5000));
         operation = await ai.operations.getVideosOperation({operation: operation});
       }
 
-      const videoUri = operation.response?.generatedVideos?.[0]?.video?.uri;
-      if (videoUri) {
-         // Fetch the actual bytes (proxy via fetch to append key)
-         const vidResp = await fetch(`${videoUri}&key=${API_KEY}`);
+      const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+      if (downloadLink) {
+         // @google/genai guidelines: Append API key when fetching from the download link.
+         const vidResp = await fetch(`${downloadLink}&key=${apiKey}`);
          const vidBlob = await vidResp.blob();
          const vidUrl = URL.createObjectURL(vidBlob);
 
-         setAssets(prev => ({
-            ...prev,
-            [itemId]: { ...prev[itemId], videoUrl: vidUrl, status: 'ready' }
-         }));
+         // Fixed: Explicitly typed EditorialAssets to avoid TypeScript inference issues (widening status to string).
+         const finalAsset: EditorialAssets = { 
+           ...globalAssetCache[itemId], 
+           videoUrl: vidUrl, 
+           status: 'ready' 
+         };
+         globalAssetCache[itemId] = finalAsset;
+         setAssets(prev => ({ ...prev, [itemId]: finalAsset }));
       }
-
-    } catch (err) {
+    } catch (err: any) {
+      // @google/genai guidelines: Handle requested entity not found by prompting for API key selection.
+      if (err?.message?.includes("Requested entity was not found.")) {
+        if (typeof window.aistudio !== 'undefined') {
+          window.aistudio.openSelectKey();
+        }
+      }
       console.error("Video Generation Failed:", err);
-      setAssets(prev => ({
-        ...prev,
-        [itemId]: { ...prev[itemId], status: 'ready' } // Revert to ready (image only) on fail
+      // Fixed: Explicitly typed 'ready' status.
+      const readyStatus: GenerationStatus = 'ready';
+      setAssets(prev => ({ 
+        ...prev, 
+        [itemId]: { ...globalAssetCache[itemId], status: readyStatus } 
       }));
     }
-  }, [assets]);
+  }, []);
 
-  return {
-    assets,
-    generateEditorialIllustration,
-    animateEditorial
-  };
+  return { assets, generateEditorialIllustration, animateEditorial };
 };

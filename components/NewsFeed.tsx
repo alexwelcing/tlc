@@ -1,402 +1,501 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { FeedItem } from '../types';
-import { ChevronRight, ChevronLeft, Play, Loader2, BookOpen, Clock, Layout, Scroll } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Play, Loader2, BookOpen, Star, Newspaper, Bookmark, ListStart } from 'lucide-react';
 import { useEditorialAI } from '../hooks/useEditorialAI';
 
 interface NewsFeedProps {
   items: FeedItem[];
   onArticleClick: (item: FeedItem) => void;
+  initialCategory?: string | null;
+  onCategoryLoaded?: () => void;
 }
 
+// Helper to determine the visual style prompt based on publication name
 const getEraPrompt = (pub: string): string => {
   const p = pub.toLowerCase();
-  if (p.includes('18') || p.includes('intelligencer') || p.includes('recorder') || p.includes('jersey')) return "1890s engraving style, monochrome, woodcut";
-  if (p.includes('daily') || p.includes('review')) return "1950s offset print, sepia toned, grainy";
-  if (p.includes('texas') || p.includes('american') || p.includes('national')) return "1980s color newsprint, halftone dots, vibrant but faded";
-  return "Modern high-contrast editorial photography";
+  if (p.includes('18') || p.includes('intelligencer') || p.includes('recorder') || p.includes('jersey')) return "1890s Victorian Engraving, monochrome";
+  if (p.includes('daily') || p.includes('review')) return "1950s Mid-Century Offset Print, halftone";
+  if (p.includes('texas') || p.includes('american') || p.includes('national')) return "1980s Retro Color Newsprint, grainy";
+  return "Modern Editorial Photography, high contrast";
 };
 
-const NewsFeed: React.FC<NewsFeedProps> = ({ items, onArticleClick }) => {
+type SectionType = 'front' | 'category' | 'wire';
+
+interface FeedSection {
+  id: string;
+  title: string;
+  items: FeedItem[];
+  type: SectionType;
+  letter?: string;
+  summary?: string;
+}
+
+const NewsFeed: React.FC<NewsFeedProps> = ({ items, onArticleClick, initialCategory, onCategoryLoaded }) => {
   const [page, setPage] = useState(0);
   const [animClass, setAnimClass] = useState('');
   const [isTabletMode, setIsTabletMode] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   
-  // Responsive Detection
+  const { assets, generateEditorialIllustration, animateEditorial } = useEditorialAI();
+
+  // --- Responsive Check ---
   useEffect(() => {
-    const checkTablet = () => {
-      // < 1024px is considered Tablet/Mobile for this view mode
-      setIsTabletMode(window.innerWidth < 1024);
-    };
-    
+    const checkTablet = () => setIsTabletMode(window.innerWidth < 1024);
     checkTablet();
     window.addEventListener('resize', checkTablet);
     return () => window.removeEventListener('resize', checkTablet);
   }, []);
 
-  // Items Per Page
-  // Front Page: 1 Hero + 1 Secondary + 10 Briefs = 12
-  // Inner Spread: 1 Spanning Feature + 4 Left + 4 Right = 9
-  const ITEMS_PER_PAGE = page === 0 ? 12 : 9;
+  // --- Section Organization Logic ---
+  const sections = useMemo<FeedSection[]>(() => {
+    if (!items || items.length === 0) return [];
 
-  // We need to calculate slices dynamically because page size changes
-  // But for simplicity in this pivot app, let's keep it fixed at 12 and hide extras on inner pages or just flow them.
-  // Actually, to make pagination stable, we should use a fixed number or complex logic.
-  // Let's stick to 10 for consistency across all pages to keep math simple, 
-  // or just accept that page 0 has more density.
-  // Let's use 10.
-  const FIXED_PAGE_SIZE = 10;
-  
-  const totalPages = Math.ceil(items.length / FIXED_PAGE_SIZE);
-  const currentItems = items.slice(page * FIXED_PAGE_SIZE, (page + 1) * FIXED_PAGE_SIZE);
-  const isFrontPage = page === 0;
+    // 1. Front Page: Top 6 Items
+    const frontItems = items.slice(0, 6);
+    const result: FeedSection[] = [{ 
+        id: 'front', 
+        title: 'Front Page', 
+        items: frontItems, 
+        type: 'front',
+        summary: 'Top Stories & Breaking News'
+    }];
 
-  // AI Hook
-  const { assets, generateEditorialIllustration, animateEditorial } = useEditorialAI();
+    // 2. Category Sections (from remaining items)
+    const remaining = items.slice(6);
+    if (remaining.length > 0) {
+        const groups: Record<string, FeedItem[]> = {};
+        
+        remaining.forEach(item => {
+            // Prioritize primary category, fallback to first category, then "General"
+            const cat = item.primaryCategory?.name || (item.categories.length > 0 ? item.categories[0].name : 'General');
+            if (!groups[cat]) groups[cat] = [];
+            groups[cat].push(item);
+        });
 
-  // Reset page when items change
-  useEffect(() => {
-    setPage(0);
-    setAnimClass('turn-page-enter');
+        // Sort categories by volume (biggest first)
+        const sortedCats = Object.entries(groups).sort((a, b) => b[1].length - a[1].length);
+
+        let charCode = 65; // 'A' (Section A is usually Front Page, so start B) 
+        charCode = 66; // Start at 'B'
+
+        sortedCats.forEach(([catName, catItems]) => {
+            // Create a spread for this category (up to 9 items)
+            if (catItems.length > 0) {
+                 result.push({
+                     id: `cat-${catName}`,
+                     title: catName,
+                     items: catItems.slice(0, 9), 
+                     type: 'category',
+                     letter: String.fromCharCode(charCode++),
+                     summary: `${catItems.length} articles filed`
+                 });
+            }
+        });
+    }
+
+    return result;
   }, [items]);
 
+  // Handle external navigation (from MetricsDashboard)
+  useEffect(() => {
+    if (initialCategory && sections.length > 0) {
+      const idx = sections.findIndex(s => s.title === initialCategory);
+      if (idx !== -1) {
+        setPage(idx);
+        if (onCategoryLoaded) onCategoryLoaded();
+        // Scroll to top
+        containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  }, [initialCategory, sections, onCategoryLoaded]);
+
+  // Safe access to current section
+  const currentSection = sections[page] || sections[0];
+  const isFrontPage = currentSection?.type === 'front';
+
+  // --- Page Navigation ---
   const handlePageChange = (newPage: number) => {
-    if (newPage < 0 || newPage >= totalPages) return;
+    if (newPage < 0 || newPage >= sections.length) return;
     setAnimClass('turn-page-exit');
     
+    // Scroll up if needed
     containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     setTimeout(() => {
       setPage(newPage);
       setAnimClass('turn-page-enter');
-    }, 500); // Wait for exit animation
+    }, 600); 
   };
 
-  // --- Generation Logic ---
-  useEffect(() => {
-    // Generate logic differs by mode
-    if (isTabletMode) {
-        // Endless scroll: Generate for visible items loosely (first 5)
-        items.slice(0, 5).forEach((item, index) => {
-             const timer = setTimeout(() => {
-                generateEditorialIllustration(item, getEraPrompt(item.publication));
-             }, index * 2000);
-             return () => clearTimeout(timer);
-        });
-    } else {
-        // Pagination mode
-        currentItems.forEach((item, index) => {
-            // Front Page: Hero (0) & Secondary (1)
-            // Inner Page: Feature (0)
-            const shouldGenerate = (isFrontPage && index <= 1) || (!isFrontPage && index === 0);
-            
-            if (shouldGenerate) {
-                 const timer = setTimeout(() => {
-                    generateEditorialIllustration(item, getEraPrompt(item.publication));
-                 }, index * 1500); 
-                 return () => clearTimeout(timer);
-            }
-        });
-    }
-  }, [currentItems, page, isTabletMode, isFrontPage, items]);
+  const jumpToSection = (index: number) => {
+    handlePageChange(index);
+  };
 
-  if (items.length === 0) {
+  // --- Reset when items change ---
+  useEffect(() => {
+    if (!initialCategory) {
+        setPage(0);
+        setAnimClass('turn-page-enter');
+    }
+  }, [items, initialCategory]);
+
+  // --- Smart AI Generation (Quota Optimized) ---
+  useEffect(() => {
+    if (!currentSection || !currentSection.items || currentSection.items.length === 0) return;
+
+    // Only generate for the HERO item of the CURRENT section
+    const timer = setTimeout(() => {
+        const hero = currentSection.items[0];
+        if (hero) {
+             generateEditorialIllustration(hero, getEraPrompt(hero.publication));
+        }
+
+        // For front page, maybe do the second one too if it's visible
+        if (isFrontPage && currentSection.items[1]) {
+             setTimeout(() => {
+                generateEditorialIllustration(currentSection.items[1], getEraPrompt(currentSection.items[1].publication));
+             }, 1200); // Stagger
+        }
+    }, 500); // Debounce page turn
+
+    return () => clearTimeout(timer);
+  }, [page, currentSection, isFrontPage, items]);
+
+  // --- RENDER: Empty State ---
+  if (!items || items.length === 0 || !currentSection) {
     return (
-        <div className="text-center py-32 px-4 border-2 border-stone-200 border-dashed rounded bg-sepia/10">
+        <div className="text-center py-32 px-4 border-4 border-stone-200 border-double rounded bg-sepia/10 m-8 animate-in fade-in">
+            <Newspaper size={48} className="mx-auto text-stone-300 mb-4" />
             <h3 className="text-xl font-display font-bold text-ink mb-2">No News Found</h3>
             <p className="font-serif italic text-stone-500">Adjust your indices to view records.</p>
         </div>
     );
   }
 
-  // --- TABLET / MOBILE ENDLESS SCROLL MODE ---
+  // --- RENDER: Tablet / Mobile List (Simplified) ---
   if (isTabletMode) {
       return (
           <div className="max-w-2xl mx-auto py-8 px-4 animate-in fade-in duration-500">
-              <div className="flex items-center justify-center gap-2 mb-8 text-stone-400">
-                  <Scroll size={16} />
-                  <span className="text-xs font-branding font-bold uppercase tracking-widest">Endless Scroll</span>
+              <div className="flex items-center justify-between border-b-2 border-ink pb-2 mb-8">
+                  <h2 className="text-xl font-branding font-bold uppercase text-ink">The Digital Feed</h2>
+                  <span className="text-[10px] font-mono text-stone-500">VOL. {items.length}</span>
               </div>
-              <div className="space-y-12">
-                  {items.map((item, index) => {
+              <div className="space-y-8">
+                  {items.slice(0, 20).map((item) => {
                       const asset = assets[item.id];
                       return (
-                          <div key={item.id} onClick={() => onArticleClick(item)} className="bg-paper border-b border-stone-300 pb-8 last:border-0 cursor-pointer group">
+                          <div key={item.id} onClick={() => onArticleClick(item)} className="bg-paper border border-stone-200 shadow-sm p-4 cursor-pointer active:scale-[0.99] transition-transform">
                               <div className="flex justify-between items-baseline mb-2">
-                                  <span className="text-[10px] font-bold uppercase text-accent">{item.publication}</span>
+                                  <span className="text-[10px] font-bold uppercase text-accent bg-accent/5 px-2 py-0.5 rounded">{item.publication}</span>
                                   <span className="text-[10px] font-mono text-stone-400">{new Date(item.publishedAt).toLocaleDateString()}</span>
                               </div>
-                              <h3 className="text-2xl font-display font-bold text-ink mb-3 leading-tight group-hover:text-accent transition-colors">
-                                  {item.title}
-                              </h3>
-                              
-                              {/* Occasional Image in Stream */}
+                              <h3 className="text-lg font-display font-bold text-ink mb-2 leading-tight">{item.title}</h3>
                               {asset?.imageUrl && (
-                                  <div className="mb-4 rounded overflow-hidden border border-stone-200 aspect-video">
-                                      <img src={asset.imageUrl} className="w-full h-full object-cover img-style-modern" />
+                                  <div className="mb-3 rounded overflow-hidden aspect-video relative">
+                                      <img src={asset.imageUrl} className="w-full h-full object-cover" alt="" />
                                   </div>
                               )}
-
-                              <p className="font-serif text-sm text-stone-600 leading-relaxed line-clamp-4">
-                                  {item.summary}
-                              </p>
-                              <div className="mt-4 flex gap-2">
-                                  {item.categories.slice(0, 3).map(c => (
-                                      <span key={c.name} className="px-2 py-0.5 bg-stone-200 text-[9px] font-bold uppercase text-stone-600">{c.name}</span>
-                                  ))}
-                              </div>
+                              <p className="font-serif text-sm text-stone-600 line-clamp-3">{item.summary}</p>
                           </div>
                       );
                   })}
               </div>
-              <div className="py-12 text-center text-stone-400 text-sm font-serif italic">
-                  End of Wire
-              </div>
+              {items.length > 20 && (
+                  <div className="text-center py-8 text-xs font-mono text-stone-400">
+                      + {items.length - 20} more articles available in Table View
+                  </div>
+              )}
           </div>
       );
   }
 
-  // --- DESKTOP PAGINATED SPREAD MODE ---
-
-  // Assets for specific items on current page
-  const item0 = currentItems[0];
-  const item1 = currentItems[1];
-  const asset0 = item0 ? assets[item0.id] : null;
-  const asset1 = item1 ? assets[item1.id] : null;
-  const item1HasMedia = !!(asset1?.imageUrl || asset1?.videoUrl);
+  // --- RENDER: Desktop Premium Spread ---
+  const heroItem = currentSection.items[0];
+  const heroAsset = heroItem ? assets[heroItem.id] : null;
 
   return (
-    <div ref={containerRef} className="perspective-container py-4 flex justify-center w-full overflow-visible">
+    <div ref={containerRef} className="perspective-container py-6 flex justify-center w-full overflow-visible">
       
       <div 
         className={`
-            bg-[#f4f1ea] shadow-2xl relative origin-left transition-all duration-800 ease-in-out
+            bg-[#f4f1ea] shadow-[0_20px_50px_rgba(0,0,0,0.3)] relative origin-left transition-all duration-800 ease-in-out
             ${animClass}
-            ${isFrontPage ? 'max-w-[1000px] border-x border-stone-300' : 'max-w-[1400px] border-none'}
-            w-full min-h-[90vh] pb-24
-            paper-distortion
+            max-w-[1400px] w-full min-h-[85vh] pb-24
+            paper-distortion border border-stone-300
         `}
         style={{ transformStyle: 'preserve-3d' }}
       >
-        {/* Paper Texture Overlay */}
-        <div className="absolute inset-0 bg-[#f4f1ea] opacity-40 mix-blend-multiply pointer-events-none z-0" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.65\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\' opacity=\'0.05\'/%3E%3C/svg%3E")' }}></div>
+        {/* Background Texture */}
+        <div className="absolute inset-0 bg-[#f4f1ea] opacity-40 mix-blend-multiply pointer-events-none z-0" 
+             style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=\'0 0 200 200\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cfilter id=\'noiseFilter\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'0.65\' numOctaves=\'3\' stitchTiles=\'stitch\'/%3E%3C/filter%3E%3Crect width=\'100%25\' height=\'100%25\' filter=\'url(%23noiseFilter)\' opacity=\'0.05\'/%3E%3C/svg%3E")' }}>
+        </div>
 
         {/* --- FRONT PAGE LAYOUT --- */}
         {isFrontPage && (
-            <div className="p-12 relative z-10">
+            <div className="relative z-10 p-8 md:p-12">
                 {/* Header */}
-                <div className="flex justify-between items-center border-b border-ink/40 mb-8 pb-1">
-                    <span className="text-[10px] font-branding font-bold uppercase tracking-widest text-stone-400">Page 1 • Headlines</span>
-                    <span className="text-[10px] font-mono text-stone-300">Section A</span>
+                <div className="flex justify-between items-end border-b-4 border-double border-ink mb-8 pb-2">
+                    <div>
+                        <span className="block text-[10px] font-mono text-stone-400 mb-1">SECTION A</span>
+                        <h2 className="text-3xl font-branding font-black uppercase tracking-tighter text-ink leading-none">Headlines</h2>
+                    </div>
+                    <div className="text-right hidden md:block">
+                        <span className="block text-[10px] font-branding font-bold uppercase text-accent">Latest Dispatches</span>
+                        <span className="text-[10px] font-mono text-stone-400">{new Date().toLocaleDateString()}</span>
+                    </div>
                 </div>
 
-                {/* Main Headline Story (Item 0) */}
-                {item0 && (
-                    <div className="mb-10 cursor-pointer group" onClick={() => onArticleClick(item0)}>
-                         <div className={`relative w-full transition-all duration-1000 ease-in-out ${asset0?.imageUrl ? 'h-[450px] mb-6' : 'h-0'}`}>
-                             {asset0?.imageUrl && (
-                                 <div className="w-full h-full overflow-hidden relative border border-stone-200 shadow-sm">
-                                     <img src={asset0.imageUrl} className="w-full h-full object-cover img-style-modern animate-in fade-in duration-1000" />
-                                     <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent opacity-90" />
-                                     <div className="absolute bottom-6 left-6 right-6 text-paper">
-                                         <div className="text-[11px] font-bold uppercase tracking-widest mb-2 text-accent border-b border-accent inline-block pb-0.5">{item0.publication}</div>
-                                         <h2 className="text-4xl md:text-6xl font-display font-bold leading-none drop-shadow-md max-w-4xl">{item0.title}</h2>
+                {/* Main Spread */}
+                <div className="grid grid-cols-12 gap-8">
+                    
+                    {/* Left Col: Hero */}
+                    <div className="col-span-8 border-r border-stone-200 pr-8">
+                        {heroItem && (
+                             <div className="group cursor-pointer" onClick={() => onArticleClick(heroItem)}>
+                                 <div className="mb-4 relative">
+                                     <div className={`w-full bg-stone-200 border border-stone-300 overflow-hidden transition-all duration-1000 ${heroAsset?.imageUrl ? 'aspect-[21/9]' : 'h-12'}`}>
+                                         {heroAsset?.imageUrl && (
+                                             <img src={heroAsset.imageUrl} className="w-full h-full object-cover grayscale-[20%] group-hover:grayscale-0 transition-all duration-700" alt="" />
+                                         )}
                                      </div>
                                  </div>
-                             )}
-                         </div>
-
-                         {!asset0?.imageUrl && (
-                             <div className="mb-6 text-center">
-                                <span className="text-[10px] font-bold uppercase tracking-widest text-accent mb-2 block">{item0.publication}</span>
-                                <h2 className="text-5xl md:text-7xl font-display font-black text-ink leading-[0.9] mb-4 group-hover:text-stone-700 transition-colors">
-                                    {item0.title}
-                                </h2>
-                                <div className="h-1 w-24 bg-ink mx-auto my-6"></div>
+                                 <div className="text-center mb-6">
+                                     <span className="inline-block px-3 py-1 border border-ink text-[10px] font-bold uppercase tracking-widest mb-3 bg-paper relative -top-3 shadow-sm">
+                                         {heroItem.publication}
+                                     </span>
+                                     <h1 className="text-5xl md:text-6xl font-display font-bold text-ink leading-[0.9] mb-4 group-hover:text-stone-700 transition-colors">
+                                         {heroItem.title}
+                                     </h1>
+                                 </div>
+                                 <div className="columns-2 gap-6 text-sm font-serif text-justify text-stone-800 leading-relaxed border-b border-stone-200 pb-6 mb-6">
+                                     <p className="first-letter:text-5xl first-letter:font-bold first-letter:float-left first-letter:mr-2 first-letter:font-branding first-letter:text-ink">
+                                         {heroItem.summary}
+                                     </p>
+                                 </div>
                              </div>
-                         )}
-
-                         <div className="columns-2 gap-8 text-stone-800 font-serif text-sm leading-relaxed text-justify border-b border-stone-200 pb-8">
-                            <p className="first-letter:text-5xl first-letter:font-display first-letter:font-bold first-letter:float-left first-letter:mr-3 first-letter:leading-none">
-                                {item0.summary}
-                            </p>
-                         </div>
-                    </div>
-                )}
-
-                {/* Secondary Story & Briefs */}
-                <div className="grid grid-cols-12 gap-8">
-                    {/* Secondary (Item 1) */}
-                    {item1 && (
-                        <div className={`${item1HasMedia ? 'col-span-7' : 'col-span-12'} flex flex-col justify-start`}>
-                            <div className="mb-6 cursor-pointer group" onClick={() => onArticleClick(item1)}>
-                                <span className="text-[10px] font-bold uppercase text-stone-400 mb-1 block">{item1.publication}</span>
-                                <h3 className="text-3xl font-display font-bold text-ink leading-tight mb-3 group-hover:underline decoration-1 underline-offset-4">
-                                    {item1.title}
-                                </h3>
-                                <p className="font-serif text-sm text-stone-600 leading-relaxed text-justify">
-                                    {item1.summary}
-                                </p>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Secondary Media */}
-                    {item1HasMedia && (
-                        <div className="col-span-5 relative animate-in slide-in-from-right duration-700 pt-2">
-                             <div className="aspect-[4/3] w-full bg-stone-100 relative overflow-hidden group border border-stone-200 shadow-sm">
-                                {asset1?.videoUrl ? (
-                                    <video src={asset1.videoUrl} autoPlay loop muted className="w-full h-full object-cover" />
-                                ) : (
-                                    <>
-                                        <img src={asset1?.imageUrl || ''} className="w-full h-full object-cover img-style-retro grayscale hover:grayscale-0 transition-all duration-500" />
-                                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); item1 && animateEditorial(item1.id, item1.title); }}
-                                                className="bg-accent text-paper p-3 rounded-full shadow-lg hover:scale-110 transition-transform"
-                                            >
-                                                {asset1?.status === 'filming' ? <Loader2 className="animate-spin" size={20}/> : <Play size={20} fill="currentColor"/>}
-                                            </button>
+                        )}
+                        
+                        {/* Secondary Hero */}
+                        {currentSection.items[1] && (
+                            <div className="grid grid-cols-2 gap-6 mt-8" onClick={() => onArticleClick(currentSection.items[1])}>
+                                <div className="cursor-pointer group">
+                                     <h3 className="text-xl font-display font-bold mb-2 group-hover:underline decoration-1 underline-offset-4">{currentSection.items[1].title}</h3>
+                                     <p className="text-xs font-serif text-stone-600 line-clamp-3 leading-relaxed">{currentSection.items[1].summary}</p>
+                                </div>
+                                <div className="aspect-video bg-stone-100 border border-stone-200 overflow-hidden shadow-sm">
+                                     {assets[currentSection.items[1].id]?.imageUrl ? (
+                                        <img src={assets[currentSection.items[1].id].imageUrl} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all" alt="" />
+                                     ) : (
+                                        <div className="w-full h-full flex items-center justify-center bg-sepia/20">
+                                            <span className="text-[9px] font-mono text-stone-300">FIG B.</span>
                                         </div>
-                                    </>
-                                )}
-                             </div>
-                        </div>
-                    )}
-                    
-                    {/* Masonry Briefs (Remaining Items) */}
-                    {currentItems.slice(2).length > 0 && (
-                        <div className="col-span-12 border-t-4 border-double border-stone-300 pt-6 mt-2">
-                             <div className="columns-4 gap-6 space-y-6">
-                                {currentItems.slice(2).map(item => (
-                                    <div key={item.id} onClick={() => onArticleClick(item)} className="break-inside-avoid cursor-pointer group mb-6 bg-white/40 p-3 border border-stone-100 hover:border-stone-300 transition-colors shadow-sm">
-                                        <div className="text-[9px] font-bold uppercase text-stone-400 mb-1">{item.publication}</div>
-                                        <h4 className="font-display font-bold text-sm leading-snug group-hover:text-accent transition-colors mb-2">
-                                            {item.title}
-                                        </h4>
-                                    </div>
+                                     )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Right Col: Sidebar List & Index */}
+                    <div className="col-span-4 pl-4 flex flex-col h-full">
+                        
+                        {/* Departmental Index */}
+                        <div className="mb-8 border-b-2 border-ink pb-6">
+                            <div className="flex items-center gap-2 mb-3">
+                                <BookOpen size={14} className="text-accent"/>
+                                <h5 className="text-[11px] font-branding font-bold uppercase tracking-widest text-ink">Departmental Index</h5>
+                            </div>
+                            <div className="grid grid-cols-1 gap-2">
+                                {sections.slice(1).map((sec, idx) => (
+                                    <button 
+                                        key={sec.id} 
+                                        onClick={() => jumpToSection(idx + 1)} 
+                                        className="flex items-center justify-between group w-full text-left"
+                                    >
+                                        <div className="flex items-baseline gap-2 overflow-hidden">
+                                            <span className="text-[10px] font-bold text-ink bg-sepia px-1 border border-stone-300 group-hover:bg-accent group-hover:text-paper transition-colors w-5 text-center">{sec.letter}</span>
+                                            <span className="text-xs font-serif text-stone-700 truncate group-hover:text-accent group-hover:underline decoration-1 underline-offset-2 transition-colors">{sec.title}</span>
+                                        </div>
+                                        <span className="text-[9px] font-mono text-stone-400 shrink-0 ml-2">Pg. {idx + 2}</span>
+                                    </button>
                                 ))}
-                             </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        )}
-
-        {/* --- INNER SPREAD LAYOUT (Pages 2+) --- */}
-        {!isFrontPage && (
-            <div className="relative z-10 h-full flex flex-col">
-                
-                {/* Spine Overlay */}
-                <div className="absolute left-1/2 inset-y-0 w-px bg-gradient-to-r from-stone-400/30 to-transparent z-0"></div>
-
-                {/* --- SPREAD HEADER: Item 0 Spans the Page --- */}
-                {item0 && (
-                    <div className="w-full px-12 pt-10 pb-8 border-b border-stone-300 mb-0 relative z-10 bg-[#f4f1ea]/80 backdrop-blur-[1px]">
-                         <div className="text-center max-w-4xl mx-auto cursor-pointer group" onClick={() => onArticleClick(item0)}>
-                            <div className="flex items-center justify-center gap-3 mb-3">
-                                <span className="h-px w-8 bg-accent"></span>
-                                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent">{item0.publication}</span>
-                                <span className="h-px w-8 bg-accent"></span>
+                                {sections.length <= 1 && (
+                                    <div className="text-[10px] font-serif italic text-stone-400">No additional sections filed.</div>
+                                )}
                             </div>
-                            <h2 className="text-4xl md:text-5xl font-display font-black text-ink mb-4 leading-none group-hover:text-stone-700 transition-colors">
-                                {item0.title}
-                            </h2>
-                            {/* Summary split across center? No, kept in one block for readability, but styled as a lead */}
-                            <p className="font-serif text-lg text-stone-600 italic max-w-2xl mx-auto leading-relaxed">
-                                {item0.summary}
-                            </p>
-                            
-                            {/* If Item 0 has an image, render it wide */}
-                            {asset0?.imageUrl && (
-                                <div className="mt-8 h-[250px] w-full overflow-hidden border-y-4 border-double border-stone-300 relative">
-                                    <img src={asset0.imageUrl} className="w-full h-full object-cover object-center opacity-90 grayscale-[20%]" />
-                                    <div className="absolute inset-0 bg-stone-900/10 mix-blend-multiply"></div>
-                                </div>
-                            )}
-                         </div>
-                    </div>
-                )}
+                        </div>
 
-                {/* --- 2-PAGE COLUMNS --- */}
-                <div className="flex-1 flex flex-row relative">
-                    {/* LEFT PAGE (Items 1, 2, 3, 4) */}
-                    <div className="flex-1 p-8 md:p-12 md:pr-16 border-r border-stone-200/50 bg-[#f8f5ee]">
-                         <div className="space-y-8">
-                            {currentItems.slice(1, 5).map((item, i) => (
-                                <div key={item.id} onClick={() => onArticleClick(item)} className="cursor-pointer group flex gap-4">
-                                    <div className="flex-1">
-                                        <h3 className="text-lg font-display font-bold text-ink mb-1 group-hover:underline decoration-1 underline-offset-2 leading-tight">
-                                            {item.title}
-                                        </h3>
-                                        <div className="text-[9px] font-mono text-stone-400 mb-1">{item.publication}</div>
-                                        <p className="text-xs font-serif text-stone-500 line-clamp-2">{item.summary}</p>
+                        <div className="bg-ink text-paper py-1 px-2 text-[10px] font-bold uppercase tracking-widest mb-4 inline-block self-start shadow-md">
+                            In Other News
+                        </div>
+                        <div className="flex-1 space-y-6">
+                            {currentSection.items.slice(2, 6).map((item) => (
+                                <div key={item.id} onClick={() => onArticleClick(item)} className="cursor-pointer group border-b border-stone-200 pb-4 last:border-0 hover:bg-stone-50/50 transition-colors p-1">
+                                    <div className="flex justify-between items-start mb-1">
+                                        <span className="text-[9px] font-bold uppercase text-stone-400">{item.publication}</span>
                                     </div>
-                                    {i === 0 && (
-                                        <div className="w-24 h-24 bg-stone-200 shrink-0 border border-stone-300">
-                                            {/* Placeholder for small article thumb if we generated one, else abstract pattern */}
-                                            <div className="w-full h-full opacity-10 bg-[radial-gradient(circle,_#000_1px,_transparent_1px)] bg-[length:4px_4px]"></div>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                         </div>
-                         <div className="mt-auto pt-8 flex justify-between items-end border-t border-stone-300 mt-8">
-                             <span className="text-[9px] font-bold uppercase text-stone-400">Page {page * 2}</span>
-                         </div>
-                    </div>
-
-                    {/* RIGHT PAGE (Items 5, 6, 7, 8, 9) */}
-                    <div className="flex-1 p-8 md:p-12 md:pl-16 bg-[#f4f1ea]">
-                         <div className="columns-1 gap-8 space-y-8">
-                            {currentItems.slice(5).map((item) => (
-                                <div key={item.id} onClick={() => onArticleClick(item)} className="cursor-pointer group break-inside-avoid">
-                                    <span className="text-[9px] font-bold uppercase bg-stone-200 px-1 text-stone-600 inline-block mb-1">{item.primaryCategory?.name || 'Wire'}</span>
-                                    <h3 className="text-base font-display font-bold text-ink mb-1 group-hover:text-accent transition-colors leading-snug">
+                                    <h4 className="text-lg font-display font-bold leading-tight mb-2 group-hover:text-accent transition-colors">
                                         {item.title}
-                                    </h3>
-                                    <p className="text-[11px] font-serif text-stone-500 line-clamp-3 leading-relaxed border-l-2 border-stone-200 pl-2">
+                                    </h4>
+                                    <p className="text-xs font-serif text-stone-500 line-clamp-2">
                                         {item.summary}
                                     </p>
                                 </div>
                             ))}
-                         </div>
-                         <div className="mt-auto pt-8 flex justify-between items-end border-t border-stone-300 mt-8">
-                             <span className="text-[9px] font-mono text-stone-300 italic">Legal Proceedings & Analysis</span>
-                             <span className="text-[9px] font-bold uppercase text-stone-400">Page {page * 2 + 1}</span>
-                         </div>
+                        </div>
+                        
+                        {/* Interactive Element */}
+                        <div className="mt-auto pt-8 border-t-2 border-stone-300">
+                             <div className="bg-sepia p-4 border border-stone-300 text-center outline outline-1 outline-offset-2 outline-stone-300">
+                                 <span className="block text-[10px] font-mono text-stone-500 mb-2">ADVERTISEMENT</span>
+                                 <div className="text-xl font-branding font-bold text-ink">The Legal Chronicle</div>
+                                 <div className="text-xs font-serif italic text-stone-600 mt-1">Premium Analytics for the Modern Firm</div>
+                             </div>
+                        </div>
                     </div>
                 </div>
             </div>
         )}
 
-        {/* --- PAGINATION CONTROLS (Only visible on Desktop) --- */}
+        {/* --- CATEGORY SECTION LAYOUT (New Premium Layout) --- */}
+        {!isFrontPage && currentSection?.type === 'category' && (
+            <div className="relative z-10 h-full flex flex-col p-8 md:p-12 bg-[#f4f1ea]">
+                
+                {/* Watermark Section Letter */}
+                <div className="absolute top-10 right-10 text-[12rem] font-branding font-black text-ink/5 pointer-events-none select-none z-0">
+                    {currentSection.letter}
+                </div>
+
+                {/* Category Header */}
+                <div className="flex items-end gap-6 border-b-2 border-ink pb-4 mb-8 relative z-10">
+                    <div className="text-6xl font-branding font-black text-ink leading-none">
+                        {currentSection.letter}<span className="text-2xl align-top text-accent">.</span>
+                    </div>
+                    <div className="flex-1">
+                        <div className="flex justify-between items-baseline border-b border-stone-300 mb-1 pb-1">
+                             <span className="text-xs font-mono font-bold text-accent uppercase tracking-widest">Department of {currentSection.title}</span>
+                             <span className="text-xs font-serif italic text-stone-500">{currentSection.summary}</span>
+                        </div>
+                        <h2 className="text-5xl font-display font-bold uppercase text-ink tracking-tight">{currentSection.title}</h2>
+                    </div>
+                </div>
+
+                <div className="flex-1 grid grid-cols-12 gap-8 min-h-0 relative z-10">
+                    
+                    {/* Left Page: Hero Focus */}
+                    <div className="col-span-5 flex flex-col border-r border-stone-200 pr-8">
+                         {heroItem && (
+                             <div className="flex-1 flex flex-col group cursor-pointer" onClick={() => onArticleClick(heroItem)}>
+                                 <div className="relative aspect-[3/4] w-full border-4 border-double border-stone-300 bg-stone-100 mb-6 overflow-hidden shadow-sm">
+                                     {heroAsset?.imageUrl ? (
+                                         <>
+                                            <img src={heroAsset.imageUrl} className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105" alt="" />
+                                         </>
+                                     ) : (
+                                         <div className="w-full h-full flex flex-col items-center justify-center bg-sepia/20 gap-2">
+                                             <Loader2 className="animate-spin text-stone-400" />
+                                             <span className="text-[10px] font-mono text-stone-400 uppercase">Generating Plate...</span>
+                                         </div>
+                                     )}
+                                     
+                                     {/* Video Overlay Button */}
+                                     {heroAsset?.imageUrl && !heroAsset.videoUrl && (
+                                         <button 
+                                            onClick={(e) => { e.stopPropagation(); animateEditorial(heroItem.id, heroItem.title); }}
+                                            className="absolute bottom-4 right-4 bg-paper/90 p-2 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-accent hover:text-white"
+                                            title="Animate Illustration"
+                                         >
+                                            <Play size={16} fill="currentColor" />
+                                         </button>
+                                     )}
+                                 </div>
+
+                                 <div className="bg-white/40 p-4 border border-stone-100">
+                                     <div className="flex items-center gap-2 mb-2">
+                                         <Bookmark size={12} className="text-accent fill-accent" />
+                                         <span className="text-[10px] font-bold uppercase text-stone-500">{heroItem.publication}</span>
+                                     </div>
+                                     <h3 className="text-3xl font-display font-bold text-ink leading-tight mb-3 group-hover:text-accent transition-colors">
+                                         {heroItem.title}
+                                     </h3>
+                                     <p className="text-sm font-serif text-stone-600 leading-relaxed text-justify line-clamp-6 first-letter:text-2xl first-letter:font-bold first-letter:mr-1">
+                                         {heroItem.summary}
+                                     </p>
+                                 </div>
+                             </div>
+                         )}
+                    </div>
+
+                    {/* Right Page: Grid of Articles */}
+                    <div className="col-span-7 pl-4">
+                         <div className="grid grid-cols-2 gap-x-8 gap-y-10">
+                             {currentSection.items.slice(1).map((item, idx) => (
+                                 <div key={item.id} onClick={() => onArticleClick(item)} className="cursor-pointer group flex flex-col h-full">
+                                     <div className="flex items-center gap-2 mb-2 border-b border-stone-200 pb-1">
+                                        <span className="text-lg font-branding font-bold text-stone-300">{idx + 2}</span>
+                                        <span className="text-[9px] font-bold uppercase text-stone-400 block truncate">{item.publication}</span>
+                                     </div>
+                                     <h4 className="text-lg font-display font-bold leading-snug mb-2 group-hover:underline decoration-1 underline-offset-4 flex-1">
+                                         {item.title}
+                                     </h4>
+                                     <p className="text-xs font-serif text-stone-500 line-clamp-3 leading-relaxed">
+                                         {item.summary}
+                                     </p>
+                                 </div>
+                             ))}
+                         </div>
+
+                         {/* Bottom Filler / Quote */}
+                         {currentSection.items.length < 5 && (
+                             <div className="mt-12 p-6 border-y-2 border-stone-200 bg-sepia/20 text-center mx-auto max-w-sm">
+                                 <p className="font-display italic text-lg text-stone-500">
+                                     "The life of the law has not been logic: it has been experience."
+                                 </p>
+                                 <span className="block mt-2 text-[10px] font-bold uppercase text-stone-400">— Oliver Wendell Holmes Jr.</span>
+                             </div>
+                         )}
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* --- NAVIGATION FOOTER --- */}
         <div className="absolute bottom-8 -left-8 -right-8 px-12 flex justify-between items-center z-50 pointer-events-none">
              <button 
                 onClick={() => handlePageChange(page - 1)}
                 disabled={page === 0}
                 className={`
-                    pointer-events-auto flex items-center gap-2 px-5 py-3 bg-paper border-2 border-ink shadow-[4px_4px_0px_0px_rgba(28,25,23,1)]
-                    text-[11px] font-bold uppercase tracking-widest transition-transform hover:-translate-y-1 active:translate-y-0
+                    pointer-events-auto flex items-center gap-2 px-6 py-4 bg-paper border-2 border-ink shadow-[4px_4px_0px_0px_rgba(28,25,23,1)]
+                    text-[11px] font-bold uppercase tracking-widest transition-all hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(139,0,0,1)] active:translate-y-0
                     ${page === 0 ? 'opacity-0 scale-90' : 'text-ink cursor-pointer'}
                 `}
              >
-                <ChevronLeft size={14} /> Previous
+                <ChevronLeft size={14} /> 
+                <div className="text-left">
+                    <span className="block text-[9px] text-stone-400 font-normal normal-case">Previous</span>
+                    {page > 0 ? sections[page-1].title : 'Back'}
+                </div>
              </button>
+
+             <div className="pointer-events-auto bg-paper px-4 py-2 border border-stone-300 shadow-sm text-[10px] font-mono text-stone-400">
+                 Page {page + 1} of {sections.length}
+             </div>
 
              <button 
                 onClick={() => handlePageChange(page + 1)}
-                disabled={page >= totalPages - 1}
+                disabled={page >= sections.length - 1}
                 className={`
-                    pointer-events-auto flex items-center gap-2 px-5 py-3 bg-paper border-2 border-ink shadow-[4px_4px_0px_0px_rgba(28,25,23,1)]
-                    text-[11px] font-bold uppercase tracking-widest transition-transform hover:-translate-y-1 active:translate-y-0
-                    ${page >= totalPages - 1 ? 'opacity-0 scale-90' : 'text-ink cursor-pointer'}
+                    pointer-events-auto flex items-center gap-2 px-6 py-4 bg-paper border-2 border-ink shadow-[4px_4px_0px_0px_rgba(28,25,23,1)]
+                    text-[11px] font-bold uppercase tracking-widest transition-all hover:-translate-y-1 hover:shadow-[6px_6px_0px_0px_rgba(139,0,0,1)] active:translate-y-0
+                    ${page >= sections.length - 1 ? 'opacity-0 scale-90' : 'text-ink cursor-pointer'}
                 `}
              >
-                Next Spread <ChevronRight size={14} />
+                <div className="text-right">
+                    <span className="block text-[9px] text-stone-400 font-normal normal-case">Next Section</span>
+                    {page < sections.length - 1 ? sections[page+1].title : 'End'}
+                </div>
+                <ChevronRight size={14} />
              </button>
         </div>
-
       </div>
     </div>
   );

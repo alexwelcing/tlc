@@ -7,9 +7,10 @@ import { formatDate } from '../utils';
 interface ArticleSidebarProps {
   article: FeedItem | null;
   onClose: () => void;
+  onCategoryClick?: (category: string) => void;
 }
 
-const ArticleSidebar: React.FC<ArticleSidebarProps> = ({ article, onClose }) => {
+const ArticleSidebar: React.FC<ArticleSidebarProps> = ({ article, onClose, onCategoryClick }) => {
   const { assets, generateEditorialIllustration } = useEditorialAI();
   
   // Trigger generation when article opens
@@ -30,6 +31,13 @@ const ArticleSidebar: React.FC<ArticleSidebarProps> = ({ article, onClose }) => 
 
   const asset = assets[article.id];
   const isLoading = asset?.status === 'grounding' || asset?.status === 'imagining';
+
+  const handleCategoryClick = (categoryName: string) => {
+    if (onCategoryClick) {
+        onCategoryClick(categoryName);
+        onClose();
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -115,9 +123,14 @@ const ArticleSidebar: React.FC<ArticleSidebarProps> = ({ article, onClose }) => 
                         <h4 className="text-xs font-bold uppercase mb-2">Filed Under:</h4>
                         <div className="flex flex-wrap gap-2">
                             {article.categories.map(c => (
-                                <span key={c.slug} className="px-2 py-1 bg-sepia text-ink text-[10px] font-mono border border-stone-300">
+                                <button 
+                                    key={c.slug} 
+                                    onClick={() => handleCategoryClick(c.name)}
+                                    className="px-2 py-1 bg-sepia text-ink text-[10px] font-mono border border-stone-300 hover:bg-ink hover:text-paper hover:border-ink transition-colors cursor-pointer"
+                                    title={`Go to Department of ${c.name}`}
+                                >
                                     {c.name}
-                                </span>
+                                </button>
                             ))}
                         </div>
                     </div>
