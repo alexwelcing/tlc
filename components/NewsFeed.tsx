@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { FeedItem } from '../types';
 import { 
-  ChevronRight, ChevronLeft, Loader2, ToggleLeft, ToggleRight, 
-  ArrowLeft, ArrowRight, Bookmark, RefreshCw, Zap
+  Loader2, ToggleLeft, ToggleRight, 
+  ArrowLeft, ArrowRight
 } from 'lucide-react';
 import { useEditorialAI } from '../hooks/useEditorialAI';
 
@@ -13,58 +13,100 @@ interface NewsFeedProps {
   onCategoryLoaded?: () => void;
 }
 
-// --- Helper Components & Logic ---
+// --- Visual Helpers ---
+
+const getEraStyle = (pub: string) => {
+  const p = pub.toLowerCase();
+  if (p.includes('18') || p.includes('intelligencer') || p.includes('recorder') || p.includes('jersey')) {
+    return {
+      container: "border-4 double border-sepia-600 bg-[#fdfbf7]",
+      image: "sepia-[.8] contrast-125 brightness-90 hue-rotate-15 grayscale-[0.3]",
+      tag: "bg-stone-800 text-[#fdfbf7] font-serif tracking-widest",
+      font: "font-serif",
+      textMode: "font-serif"
+    };
+  }
+  if (p.includes('daily') || p.includes('review')) {
+    return {
+      container: "border-2 border-stone-900 bg-white",
+      image: "grayscale contrast-125 brightness-110",
+      tag: "bg-stone-900 text-white font-branding uppercase tracking-tighter",
+      font: "font-branding",
+      textMode: "font-branding"
+    };
+  }
+  if (p.includes('texas') || p.includes('american')) {
+    return {
+      container: "border-2 border-stone-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]",
+      image: "saturate-150 contrast-110 hue-rotate-[-10deg]",
+      tag: "bg-blue-800 text-white font-sans font-bold uppercase",
+      font: "font-sans",
+      textMode: "font-sans"
+    };
+  }
+  return {
+    container: "border border-stone-200 shadow-sm",
+    image: "contrast-105",
+    tag: "bg-accent text-white font-bold uppercase tracking-wide",
+    font: "font-display",
+    textMode: "font-display"
+  };
+};
 
 const getEraPrompt = (pub: string): string => {
   const p = pub.toLowerCase();
-  if (p.includes('18') || p.includes('intelligencer') || p.includes('recorder') || p.includes('jersey')) return "1890s Victorian Engraving, monochrome";
-  if (p.includes('daily') || p.includes('review')) return "1950s Mid-Century Offset Print, halftone";
-  if (p.includes('texas') || p.includes('american')) return "1980s Retro Color Newsprint, grainy";
-  return "Modern Editorial Photography, high contrast";
+  // RETURN ART STYLES ONLY - The hook combines this with article details.
+  if (p.includes('18') || p.includes('intelligencer') || p.includes('recorder') || p.includes('jersey')) 
+    return "1890s Victorian Engraving, woodcut, intricate hatching, monochrome";
+  
+  if (p.includes('daily') || p.includes('review')) 
+    return "1950s Mid-Century Offset Print, halftone dots, bauhaus layout, grainy newsprint";
+  
+  if (p.includes('texas') || p.includes('american')) 
+    return "1980s Corporate Memphis, airbrush, retro grid, low poly, high saturation";
+  
+  return "Modern Editorial Photography, high contrast, depth of field, minimalist";
 };
 
-const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+";
+const getLayoutClass = (index: number) => {
+  const pattern = index % 10;
+  // A magazine style pattern for grid
+  switch (pattern) {
+    case 0: return "col-span-1 md:col-span-2 md:row-span-2"; // Hero (Image)
+    case 5: return "col-span-1 md:col-span-2 md:row-span-1"; // Wide (Image)
+    case 9: return "col-span-1 md:col-span-3 md:row-span-1"; // Full width Banner (Image)
+    default: return "col-span-1";
+  }
+};
 
-const ScrambleText: React.FC<{ text: string, className?: string, delay?: number, speed?: number }> = ({ text, className, delay = 0, speed = 1 }) => {
-  const [display, setDisplay] = useState(text);
+const shouldHaveImage = (index: number) => {
+    const pattern = index % 10;
+    // Only generate images for Hero (0), Wide (5), and Banner (9) slots
+    return [0, 5, 9].includes(pattern);
+};
+
+// --- Smooth Progress Hook ---
+const useSmoothProgress = (target: number) => {
+  const [display, setDisplay] = useState(0);
   
   useEffect(() => {
-    let frame = 0;
-    const duration = 30 / speed; // frames
     let animationId: number;
-    let timeoutId: ReturnType<typeof setTimeout>;
-
     const animate = () => {
-      frame++;
-      if (frame < duration) {
-        const progress = frame / duration;
-        const scrambled = text.split('').map((char, index) => {
-          if (char === ' ') return ' ';
-          if (index < Math.floor(progress * text.length)) return char;
-          return CHARS[Math.floor(Math.random() * CHARS.length)];
-        }).join('');
-        
-        setDisplay(scrambled);
-        animationId = requestAnimationFrame(animate);
-      } else {
-        setDisplay(text);
-      }
+      setDisplay(prev => {
+        if (prev < target) {
+          const diff = target - prev;
+          const step = Math.max(0.5, diff * 0.1); 
+          return Math.min(target, prev + step);
+        }
+        return prev;
+      });
+      animationId = requestAnimationFrame(animate);
     };
+    animationId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationId);
+  }, [target]);
 
-    // Initial scramble state
-    setDisplay(text.split('').map(c => c === ' ' ? ' ' : CHARS[Math.floor(Math.random() * CHARS.length)]).join(''));
-
-    timeoutId = setTimeout(() => {
-        animationId = requestAnimationFrame(animate);
-    }, delay);
-
-    return () => {
-        clearTimeout(timeoutId);
-        cancelAnimationFrame(animationId);
-    };
-  }, [text, delay, speed]);
-
-  return <span className={className}>{display}</span>;
+  return Math.floor(display);
 };
 
 type SectionType = 'front' | 'category';
@@ -79,28 +121,17 @@ interface FeedSection {
 }
 
 const NewsFeed: React.FC<NewsFeedProps> = ({ items, onArticleClick, initialCategory, onCategoryLoaded }) => {
-  // Navigation State
   const [sectionIndex, setSectionIndex] = useState(0); 
   const [innerPage, setInnerPage] = useState(0); 
   
-  // Mode State
   const [activeMode, setActiveMode] = useState<'standard' | 'illustrated'>('standard');
   const [targetMode, setTargetMode] = useState<'standard' | 'illustrated'>('standard');
   
-  // Transition Logic
   const isPreparing = targetMode === 'illustrated' && activeMode === 'standard';
   const progressRef = useRef<{total: number, current: number}>({ total: 0, current: 0 });
 
   const containerRef = useRef<HTMLDivElement>(null);
   const { assets, generateEditorialIllustration } = useEditorialAI();
-  const [isTablet, setIsTablet] = useState(false);
-
-  useEffect(() => {
-    const checkTablet = () => setIsTablet(window.innerWidth < 1024);
-    checkTablet();
-    window.addEventListener('resize', checkTablet);
-    return () => window.removeEventListener('resize', checkTablet);
-  }, []);
 
   // Organize Sections
   const sections = useMemo<FeedSection[]>(() => {
@@ -148,7 +179,7 @@ const NewsFeed: React.FC<NewsFeedProps> = ({ items, onArticleClick, initialCateg
   }, [initialCategory, sections, onCategoryLoaded]);
 
   const currentSection = sections[sectionIndex] || sections[0];
-  const ITEMS_PER_PAGE = activeMode === 'front' ? 12 : (activeMode === 'illustrated' ? 9 : 12);
+  const ITEMS_PER_PAGE = activeMode === 'front' ? 12 : (activeMode === 'illustrated' ? 10 : 15); // Higher density for Standard
   const maxPages = Math.ceil((currentSection?.items.length || 0) / ITEMS_PER_PAGE);
 
   // --- SMART TRANSITION LOGIC ---
@@ -157,25 +188,31 @@ const NewsFeed: React.FC<NewsFeedProps> = ({ items, onArticleClick, initialCateg
       const startIndex = innerPage * ITEMS_PER_PAGE;
       const visibleItems = currentSection.items.slice(startIndex, startIndex + ITEMS_PER_PAGE);
       
+      const itemsNeedingImages = visibleItems.filter((_, idx) => shouldHaveImage(idx));
+      
       let readyCount = 0;
-      visibleItems.forEach(item => {
+      
+      if (itemsNeedingImages.length === 0) {
+          progressRef.current = { total: 1, current: 1 };
+          setActiveMode('illustrated');
+          return;
+      }
+
+      itemsNeedingImages.forEach(item => {
         const status = assets[item.id]?.status;
         if (status === 'ready' || status === 'error') {
           readyCount++;
         } else {
-          // Trigger generation if not already present
           generateEditorialIllustration(item, getEraPrompt(item.publication));
         }
       });
 
-      progressRef.current = { total: visibleItems.length, current: readyCount };
+      progressRef.current = { total: itemsNeedingImages.length, current: readyCount };
 
-      if (readyCount >= visibleItems.length && visibleItems.length > 0) {
-        // All visible items are ready, switch mode
+      if (readyCount >= itemsNeedingImages.length) {
         setActiveMode('illustrated');
       }
     } else if (targetMode === 'standard' && activeMode === 'illustrated') {
-        // Downgrade is instant
         setActiveMode('standard');
     }
   }, [isPreparing, targetMode, activeMode, innerPage, currentSection, assets, generateEditorialIllustration, ITEMS_PER_PAGE]);
@@ -186,7 +223,7 @@ const NewsFeed: React.FC<NewsFeedProps> = ({ items, onArticleClick, initialCateg
           const startIndex = innerPage * ITEMS_PER_PAGE;
           const visibleItems = currentSection.items.slice(startIndex, startIndex + ITEMS_PER_PAGE);
           visibleItems.forEach((item, i) => {
-               if (!assets[item.id]) {
+               if (shouldHaveImage(i) && !assets[item.id]) {
                    setTimeout(() => generateEditorialIllustration(item, getEraPrompt(item.publication)), i * 150);
                }
           });
@@ -206,6 +243,12 @@ const NewsFeed: React.FC<NewsFeedProps> = ({ items, onArticleClick, initialCateg
           document.getElementById('feed-header')?.scrollIntoView({ behavior: 'smooth' });
       }
   };
+
+  const percent = progressRef.current.total > 0 
+    ? (progressRef.current.current / progressRef.current.total) * 100 
+    : 0;
+  
+  const displayPercent = useSmoothProgress(percent);
 
   const renderPagination = () => (
       <div className="flex items-center justify-between border-t border-stone-300 pt-6 mt-8 select-none">
@@ -250,7 +293,7 @@ const NewsFeed: React.FC<NewsFeedProps> = ({ items, onArticleClick, initialCateg
                  {isPreparing && (
                      <div className="flex items-center gap-2 text-[10px] font-mono font-bold text-accent animate-pulse">
                          <Loader2 size={12} className="animate-spin" />
-                         <span>Inking Plates... ({Math.round((progressRef.current.current / progressRef.current.total) * 100)}%)</span>
+                         <span>Inking Plates... ({displayPercent}%)</span>
                      </div>
                  )}
                  <button 
@@ -269,75 +312,127 @@ const NewsFeed: React.FC<NewsFeedProps> = ({ items, onArticleClick, initialCateg
 
           <div className="p-6 md:p-12">
             
-            {/* ILLUSTRATED LAYOUT */}
+            {/* ILLUSTRATED LAYOUT (MAGAZINE STYLE) */}
             {activeMode === 'illustrated' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 animate-in fade-in zoom-in-95 duration-700">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 auto-rows-[minmax(150px,auto)] animate-in fade-in zoom-in-95 duration-700">
                     {visibleItems.map((item, idx) => {
                         const asset = assets[item.id];
+                        const layoutClass = getLayoutClass(idx);
+                        const styles = getEraStyle(item.publication);
+                        const hasImage = shouldHaveImage(idx);
+                        
                         return (
-                            <div key={item.id} onClick={() => onArticleClick(item)} className="group cursor-pointer flex flex-col gap-3">
-                                <div className="aspect-[4/3] bg-sepia border-2 border-ink relative overflow-hidden shadow-[4px_4px_0px_0px_rgba(28,25,23,0.2)] group-hover:shadow-[6px_6px_0px_0px_rgba(139,0,0,1)] transition-all">
-                                    {asset?.imageUrl ? (
-                                        <img src={asset.imageUrl} className="w-full h-full object-cover img-style-modern group-hover:scale-105 transition-transform duration-700" alt="" />
-                                    ) : (
-                                        <div className="absolute inset-0 flex items-center justify-center bg-stone-100">
-                                            <Loader2 className="text-stone-300 animate-spin" />
+                            <div key={item.id} onClick={() => onArticleClick(item)} className={`${layoutClass} group cursor-pointer flex flex-col h-full`}>
+                                {hasImage ? (
+                                    // --- IMAGE CARD ---
+                                    <div className={`flex-1 relative overflow-hidden transition-all h-full min-h-[300px] ${styles.container} group-hover:shadow-[8px_8px_0px_0px_rgba(28,25,23,0.5)]`}>
+                                        <div className="w-full h-full relative overflow-hidden">
+                                            {asset?.imageUrl ? (
+                                                <img 
+                                                    src={asset.imageUrl} 
+                                                    className={`w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105 ${styles.image}`} 
+                                                    alt="" 
+                                                />
+                                            ) : (
+                                                <div className="absolute inset-0 flex items-center justify-center bg-stone-100">
+                                                    <Loader2 className="text-stone-300 animate-spin" />
+                                                </div>
+                                            )}
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60"></div>
                                         </div>
-                                    )}
-                                    <div className="absolute top-2 left-2 bg-paper/90 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest border border-ink">
-                                        {item.publication}
+
+                                        <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
+                                            <div className={`inline-block px-2 py-0.5 mb-2 text-[9px] ${styles.tag}`}>
+                                                {item.publication}
+                                            </div>
+                                            <h3 className={`text-lg md:text-xl leading-tight mb-1 group-hover:text-stone-200 transition-colors ${styles.font} font-bold shadow-black drop-shadow-md`}>
+                                                {item.title}
+                                            </h3>
+                                        </div>
                                     </div>
-                                </div>
-                                <div>
-                                    <h3 className="font-display font-bold text-lg leading-tight group-hover:text-accent transition-colors line-clamp-3">
-                                        {item.title}
-                                    </h3>
-                                    <div className="flex items-center gap-2 mt-2 text-[10px] font-mono text-stone-500">
-                                        <span>{new Date(item.publishedAt).toLocaleDateString()}</span>
-                                        <span className="w-px h-3 bg-stone-300"></span>
-                                        <span>{item.readtime} min</span>
+                                ) : (
+                                    // --- TEXT CARD ---
+                                    <div className={`flex flex-col h-full justify-between hover:bg-sepia/30 transition-colors p-4 ${styles.textMode || 'border-l border-stone-300 pl-4'}`}>
+                                       <div>
+                                            <div className="flex justify-between items-start mb-2">
+                                                <span className="text-[9px] font-branding font-bold uppercase tracking-wider text-stone-400">
+                                                    {item.publication}
+                                                </span>
+                                            </div>
+                                            <h3 className={`text-lg leading-snug mb-3 text-ink group-hover:text-accent transition-colors ${styles.font} font-bold`}>
+                                                {item.title}
+                                            </h3>
+                                            <p className="text-sm font-serif text-stone-600 line-clamp-3 leading-relaxed">
+                                                {item.summary}
+                                            </p>
+                                       </div>
+                                       <div className="mt-4 pt-4 border-t border-stone-200/50 flex items-center gap-2">
+                                            <span className="text-[9px] font-bold uppercase tracking-wider text-stone-400 group-hover:text-accent transition-colors flex items-center gap-1">
+                                                Read More <ArrowRight size={10} />
+                                            </span>
+                                       </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
                         );
                     })}
                 </div>
             )}
 
-            {/* STANDARD LAYOUT (Text with Scramble) */}
+            {/* STANDARD WIRE LAYOUT (NEWSPAPER COLUMNS) */}
             {activeMode === 'standard' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-8 animate-in fade-in duration-300">
-                    {visibleItems.map((item, idx) => (
-                        <div key={`${item.id}-${innerPage}`} onClick={() => onArticleClick(item)} className="group cursor-pointer border-b border-stone-200 pb-6 hover:border-accent/50 transition-colors">
-                            <div className="flex justify-between items-start mb-2">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[9px] font-bold uppercase bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded-sm">
-                                        {item.source || 'WIRE'}
-                                    </span>
-                                    <span className="text-[9px] font-mono text-stone-400 uppercase">
+                <div className="columns-1 md:columns-2 lg:columns-3 gap-8 space-y-8 animate-in fade-in duration-500">
+                    {visibleItems.map((item, idx) => {
+                        const styles = getEraStyle(item.publication);
+                        // Determine layout weight
+                        const isLead = idx === 0 || idx === 5;
+                        const isBrief = idx > 8;
+
+                        return (
+                             <div 
+                                key={item.id} 
+                                onClick={() => onArticleClick(item)} 
+                                className={`
+                                    break-inside-avoid mb-8 cursor-pointer group 
+                                    ${isLead ? 'border-b-4 border-double border-ink pb-6' : 'border-b border-stone-200 pb-4'}
+                                `}
+                             >
+                                <div className="flex justify-between items-baseline mb-2">
+                                    <span className="text-[9px] font-branding font-bold uppercase tracking-wider text-stone-500">
                                         {item.publication}
                                     </span>
+                                    <span className="text-[9px] font-mono text-stone-400">
+                                        {new Date(item.publishedAt).toLocaleDateString()}
+                                    </span>
                                 </div>
-                                <span className="text-[9px] font-mono text-stone-400">
-                                    {new Date(item.publishedAt).toLocaleDateString()}
-                                </span>
-                            </div>
-                            
-                            <h3 className="text-xl md:text-2xl font-display font-bold text-ink leading-tight mb-3 group-hover:text-accent transition-colors">
-                                <ScrambleText text={item.title} delay={idx * 50} />
-                            </h3>
-                            
-                            <div className="text-sm font-serif text-stone-600 leading-relaxed line-clamp-3 opacity-90">
-                                <ScrambleText text={item.summary} delay={idx * 50 + 200} speed={2} className="opacity-80" />
-                            </div>
 
-                            <div className="mt-3 flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-accent flex items-center gap-1">
-                                    Read Full Filing <ArrowRight size={10} />
-                                </span>
+                                <h3 className={`
+                                    leading-tight text-ink group-hover:text-accent transition-colors
+                                    ${isLead ? 'text-2xl md:text-3xl font-display font-black mb-3' : 'text-lg font-bold font-serif mb-2'}
+                                    ${styles.font}
+                                `}>
+                                    {item.title}
+                                </h3>
+
+                                {!isBrief && (
+                                    <p className={`
+                                        font-serif text-stone-600 leading-relaxed
+                                        ${isLead ? 'text-base line-clamp-4' : 'text-sm line-clamp-3'}
+                                    `}>
+                                        {item.summary}
+                                    </p>
+                                )}
+
+                                <div className="mt-3 flex items-center justify-between">
+                                    <div className="flex gap-2 text-[9px] font-bold uppercase text-stone-400">
+                                        <span>{item.primaryCategory?.name}</span>
+                                        {item.authors.length > 0 && <span className="italic normal-case font-serif text-stone-500">by {item.authors[0].name}</span>}
+                                    </div>
+                                    <ArrowRight size={10} className="text-stone-300 group-hover:text-accent opacity-0 group-hover:opacity-100 transition-all" />
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 

@@ -41,8 +41,19 @@ export const useEditorialAI = () => {
       const ai = new GoogleGenAI({ apiKey });
 
       // Step 1: Search Grounding (Lightweight Flash)
-      const groundingPrompt = `Quick visual metaphor for news headline: "${item.title}". 
-      Era Style: ${styleEra}. Output only 3 objects separated by commas.`;
+      // SYSTEM: Combine Title + Summary + Topics + Style for a rich visual metaphor.
+      const categories = item.categories.map(c => c.name).join(', ');
+      
+      const groundingPrompt = `
+        Act as an Art Director for a newspaper. 
+        Article Title: "${item.title}"
+        Description: "${item.summary}"
+        Topics: ${categories}
+        
+        Task: Suggest 3 distinct visual subjects or metaphors for an editorial illustration.
+        Art Style: ${styleEra}.
+        Constraint: Output ONLY the 3 subjects separated by commas. No conversational text.
+      `;
 
       let visualElements = "";
       try {
@@ -51,16 +62,23 @@ export const useEditorialAI = () => {
             contents: groundingPrompt,
             config: { tools: [{ googleSearch: {} }] }
         });
-        // @google/genai guidelines: Use .text property (not a method) to extract text content.
-        visualElements = groundingResp.text || "Law, Justice, Paperwork";
+        visualElements = groundingResp.text || `${item.primaryCategory?.name || 'Legal'}, Courtroom, Documents`;
       } catch (e) {
-        visualElements = `${item.primaryCategory?.name || 'Legal'}, Courtroom, Documents`;
+        visualElements = `${item.primaryCategory?.name || 'Legal'}, Justice, Architecture`;
       }
 
       // Step 2: Image Generation
       updateLocalState({ imageUrl: null, videoUrl: null, status: 'imagining' });
 
-      const imagePrompt = `Newspaper editorial illustration. Style: ${styleEra} woodcut print. Subject: ${visualElements}. No text. Cinematic high contrast ink bleed.`;
+      // Construct a dense, descriptive prompt for the image model
+      const imagePrompt = `
+        Editorial illustration. 
+        Style: ${styleEra}.
+        Subject: ${visualElements}.
+        Context: The image should conceptually represent "${item.title}".
+        Aesthetics: High contrast, ink bleed textures, newspaper print quality, detailed lines.
+        Negative Prompt: No text, no words, no letters, no distorted faces.
+      `;
 
       const imageResp = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
@@ -93,7 +111,6 @@ export const useEditorialAI = () => {
 
     } catch (err) {
       console.error("Editorial Generation Failed:", err);
-      // Fixed: Explicitly typed 'error' to match GenerationStatus union.
       const errorStatus: GenerationStatus = 'error';
       updateLocalState({ 
         imageUrl: globalAssetCache[item.id]?.imageUrl || null, 
@@ -110,7 +127,6 @@ export const useEditorialAI = () => {
     const currentAsset = globalAssetCache[itemId];
     if (!currentAsset?.imageUrl || !apiKey) return;
 
-    // Fixed: Explicitly typed 'filming' to match GenerationStatus union and prevent widening.
     const filmingStatus: GenerationStatus = 'filming';
     setAssets(prev => ({
       ...prev,
@@ -118,13 +134,12 @@ export const useEditorialAI = () => {
     }));
 
     try {
-      // @google/genai guidelines: Create a new GoogleGenAI instance right before making an API call.
       const ai = new GoogleGenAI({ apiKey });
       const base64Data = currentAsset.imageUrl.split(',')[1];
       
       let operation = await ai.models.generateVideos({
         model: 'veo-3.1-fast-generate-preview',
-        prompt: `Subtle motion, pan over the illustration of: ${itemTitle}`,
+        prompt: `Subtle cinematic motion, slow pan over the illustration of: ${itemTitle}, preserving the art style.`,
         image: {
             imageBytes: base64Data,
             mimeType: 'image/png'
@@ -143,12 +158,10 @@ export const useEditorialAI = () => {
 
       const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
       if (downloadLink) {
-         // @google/genai guidelines: Append API key when fetching from the download link.
          const vidResp = await fetch(`${downloadLink}&key=${apiKey}`);
          const vidBlob = await vidResp.blob();
          const vidUrl = URL.createObjectURL(vidBlob);
 
-         // Fixed: Explicitly typed EditorialAssets to avoid TypeScript inference issues (widening status to string).
          const finalAsset: EditorialAssets = { 
            ...globalAssetCache[itemId], 
            videoUrl: vidUrl, 
@@ -158,14 +171,12 @@ export const useEditorialAI = () => {
          setAssets(prev => ({ ...prev, [itemId]: finalAsset }));
       }
     } catch (err: any) {
-      // @google/genai guidelines: Handle requested entity not found by prompting for API key selection.
       if (err?.message?.includes("Requested entity was not found.")) {
         if (typeof window.aistudio !== 'undefined') {
           window.aistudio.openSelectKey();
         }
       }
       console.error("Video Generation Failed:", err);
-      // Fixed: Explicitly typed 'ready' status.
       const readyStatus: GenerationStatus = 'ready';
       setAssets(prev => ({ 
         ...prev, 
