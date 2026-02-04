@@ -38,3 +38,20 @@ export interface FeedData {
 }
 
 export type ViewMode = 'feed' | 'analytics' | 'table';
+
+export type FeedPayload = FeedData | FeedData[];
+
+export interface EmbeddedFeedConfig {
+  feedUrl?: string;
+  feedData?: FeedPayload;
+  sourceLabel?: string;
+}
+
+declare global {
+  interface Window {
+    legalChronicleConfig?: EmbeddedFeedConfig;
+    legalChronicle?: {
+      loadFeed?: (payload: FeedPayload, sourceLabel?: string) => void;
+    };
+  }
+}
