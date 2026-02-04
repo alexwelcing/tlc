@@ -7,7 +7,7 @@ import NewsFeed from './components/NewsFeed';
 import FilterBar from './components/FilterBar';
 import ExportModal from './components/ExportModal';
 import ArticleSidebar from './components/ArticleSidebar';
-import { FeedData, ViewMode, FeedItem } from './types';
+import { FeedData, ViewMode, FeedItem, FeedPayload } from './types';
 import { exportToCSV } from './utils';
 import { useEditorialAI } from './hooks/useEditorialAI';
 
@@ -208,6 +208,7 @@ const getFilteredItems = (items: FeedItem[], criteria: any, ignore?: string) => 
 };
 
 const App: React.FC = () => {
+  const initialConfig = useMemo(() => window.legalChronicleConfig, []);
   const [loadedFeeds, setLoadedFeeds] = useState<LoadedFeed[]>([]);
   const [stagingData, setStagingData] = useState<LoadedFeed[] | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('feed'); 
@@ -236,20 +237,64 @@ const App: React.FC = () => {
     checkApiKey();
   }, []);
 
-  const handleDataLoaded = (files: { data: FeedData, filename: string }[]) => {
-    const newFeeds: LoadedFeed[] = files.map((file, index) => {
+  const buildLoadedFeeds = (files: { data: FeedData, filename: string }[]) => {
+    return files.map((file, index) => {
       const dates = file.data.items.map(i => new Date(i.publishedAt).getTime()).filter(t => !isNaN(t));
       const range = dates.length > 0 ? { start: Math.min(...dates), end: Math.max(...dates) } : { start: Date.now(), end: Date.now() };
       return { id: `${Date.now()}-${index}`, filename: file.filename, data: file.data, dateRange: range };
     });
+  };
 
-    setStagingData(newFeeds);
+  const stageFeeds = (feeds: LoadedFeed[]) => {
+    if (feeds.length === 0) return;
+    setStagingData(feeds);
     setIsPrinting(true);
-
-    if (newFeeds.length > 0 && newFeeds[0].data.items.length > 0) {
-      generateEditorialIllustration(newFeeds[0].data.items[0], "Modern Newspaper");
+    if (feeds[0].data.items.length > 0) {
+      generateEditorialIllustration(feeds[0].data.items[0], "Modern Newspaper");
     }
   };
+
+  const handleDataLoaded = (files: { data: FeedData, filename: string }[]) => {
+    stageFeeds(buildLoadedFeeds(files));
+  };
+
+  const handlePayloadLoaded = (payload: FeedPayload, sourceLabel = 'api-feed') => {
+    const feeds = Array.isArray(payload) ? payload : [payload];
+    stageFeeds(buildLoadedFeeds(feeds.map((data, index) => ({
+      data,
+      filename: `${sourceLabel}-${index + 1}`
+    }))));
+  };
+
+  const loadFeedFromUrl = async (feedUrl: string, sourceLabel = 'api-feed') => {
+    try {
+      const response = await fetch(feedUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch feed (${response.status})`);
+      }
+      const payload = await response.json();
+      handlePayloadLoaded(payload as FeedPayload, sourceLabel);
+    } catch (error) {
+      console.error('Failed to load feed', error);
+    }
+  };
+
+  useEffect(() => {
+    window.legalChronicle = {
+      loadFeed: handlePayloadLoaded
+    };
+    return () => {
+      delete window.legalChronicle;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (initialConfig?.feedData) {
+      handlePayloadLoaded(initialConfig.feedData, initialConfig.sourceLabel || 'embedded');
+    } else if (initialConfig?.feedUrl) {
+      loadFeedFromUrl(initialConfig.feedUrl, initialConfig.sourceLabel || 'embedded');
+    }
+  }, [initialConfig]);
 
   const finalizeLoading = () => {
     if (stagingData) {
