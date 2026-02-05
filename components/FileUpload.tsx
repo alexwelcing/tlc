@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Upload, FileJson, AlertCircle, Plus } from 'lucide-react';
 import { FeedData } from '../types';
+import { normalizeFeedPayload } from '../feedNormalizer';
 
 interface ProcessedFile {
   data: FeedData;
@@ -24,10 +25,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, isCompact = false
     setIsProcessing(true);
     setError(null);
 
-    const promises: Promise<ProcessedFile>[] = [];
+    const promises: Promise<ProcessedFile[]>[] = [];
 
     Array.from(files).forEach((file: File) => {
-      const promise = new Promise<ProcessedFile>((resolve, reject) => {
+      const promise = new Promise<ProcessedFile[]>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (event) => {
           try {
@@ -35,15 +36,22 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, isCompact = false
             const jsonStartIndex = text.indexOf('{');
             const cleanText = jsonStartIndex > -1 ? text.substring(jsonStartIndex) : text;
             
-            const json = JSON.parse(cleanText) as FeedData;
-            
-            if (!json.items || !Array.isArray(json.items)) {
-              reject(new Error(`Invalid Manifest in ${file.name}: Missing 'items'.`));
-            } else {
-              resolve({ data: json, filename: file.name });
+            const json = JSON.parse(cleanText);
+            const normalizedFeeds = normalizeFeedPayload(json, file.name);
+
+            if (normalizedFeeds.length === 0 || normalizedFeeds.every(feed => feed.items.length === 0)) {
+              reject(new Error(`Invalid Manifest in ${file.name}: No recognizable items found.`));
+              return;
             }
+
+            resolve(
+              normalizedFeeds.map((data, index) => ({
+                data,
+                filename: normalizedFeeds.length > 1 ? `${file.name}#${index + 1}` : file.name
+              }))
+            );
           } catch (err) {
-            reject(new Error(`Failed to read ledger ${file.name}`));
+            reject(new Error(`Failed to read feed ${file.name}`));
           }
         };
         reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
@@ -54,10 +62,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, isCompact = false
 
     try {
       const results = await Promise.all(promises);
-      onDataLoaded(results);
+      onDataLoaded(results.flat());
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "An error occurred while processing ledgers.");
+      setError(err.message || "An error occurred while processing feeds.");
     } finally {
       setIsProcessing(false);
       if (fileInputRef.current) {
