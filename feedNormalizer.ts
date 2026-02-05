@@ -2,8 +2,11 @@ import { Author, Category, FeedData, FeedItem, FeedPayload } from './types';
 
 type UnknownRecord = Record<string, unknown>;
 
-const ARRAY_KEYS = ['items', 'articles', 'entries', 'results', 'data', 'stories', 'posts', 'records'];
+const FEED_ITEM_ARRAY_KEYS = ['items', 'articles', 'entries', 'results', 'data', 'stories', 'posts', 'records'];
 const AVERAGE_READING_SPEED_WPM = 200;
+const DEFAULT_ITEM_TITLE = 'Untitled Story';
+const DEFAULT_PUBLICATION_NAME = 'Unknown Publication';
+const MAX_FEED_TRAVERSAL_DEPTH = 2;
 
 const isRecord = (value: unknown): value is UnknownRecord =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -198,7 +201,9 @@ const normalizeFeedItem = (
   index: number
 ): FeedItem => {
   const item = isRecord(raw) ? raw : { value: raw };
-  const title = pickString(item['title'], item['headline'], item['name'], item['subject'], item['summary'], item['description']) || 'Untitled Story';
+  const title =
+    pickString(item['title'], item['headline'], item['name'], item['subject'], item['summary'], item['description']) ||
+    DEFAULT_ITEM_TITLE;
   const url =
     pickString(item['url'], item['link'], item['href'], item['permalink'], item['webUrl'], item['uri'], context.defaultUrl) || '';
   const publication = pickString(
@@ -209,7 +214,7 @@ const normalizeFeedItem = (
     item['siteName'],
     context.defaultPublication,
     context.feedId,
-    'Unknown Publication'
+    DEFAULT_PUBLICATION_NAME
   );
 
   const bylineText = pickString(item['byline'], item['author'], item['creator'], item['authors']);
@@ -316,7 +321,7 @@ const findItems = (payload: unknown): { items: unknown[]; meta: UnknownRecord } 
   if (Array.isArray(payload)) return { items: payload, meta: {} };
   if (!isRecord(payload)) return { items: [], meta: {} };
 
-  for (const key of ARRAY_KEYS) {
+  for (const key of FEED_ITEM_ARRAY_KEYS) {
     if (Array.isArray(payload[key])) {
       return { items: payload[key] as unknown[], meta: payload };
     }
@@ -324,7 +329,7 @@ const findItems = (payload: unknown): { items: unknown[]; meta: UnknownRecord } 
 
   const candidates: { items: unknown[]; meta: UnknownRecord }[] = [];
   const walk = (value: unknown, depth: number, meta: UnknownRecord) => {
-    if (!isRecord(value) || depth > 2) return;
+    if (!isRecord(value) || depth > MAX_FEED_TRAVERSAL_DEPTH) return;
     Object.values(value).forEach(child => {
       if (Array.isArray(child) && child.some(item => isRecord(item))) {
         candidates.push({ items: child, meta });
