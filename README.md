@@ -4,7 +4,7 @@
 
 # The Legal Chronicle
 
-This repository packages The Legal Chronicle as a standalone React app that can also be embedded at the end of an API call inside another application. It accepts JSON feed payloads (the same structure the file uploader expects) via a simple window-based configuration or a runtime loader.
+This repository packages The Legal Chronicle as a standalone React app that can also be embedded at the end of an API call inside another application. It accepts JSON feed payloads (the same structure the file uploader expects) via a simple window-based configuration or a runtime loader, and it will normalize common news feed formats (items/articles/results arrays with headline/link/summary fields) into the viewer schema automatically.
 
 View your app in AI Studio: https://ai.studio/apps/drive/1ySXrP_RdpA2QPSrqq_EWNvLPmw84Yunq
 

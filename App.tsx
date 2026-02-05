@@ -9,6 +9,7 @@ import ExportModal from './components/ExportModal';
 import ArticleSidebar from './components/ArticleSidebar';
 import { FeedData, ViewMode, FeedItem, FeedPayload } from './types';
 import { exportToCSV } from './utils';
+import { normalizeFeedPayload } from './feedNormalizer';
 import { useEditorialAI } from './hooks/useEditorialAI';
 
 interface LoadedFeed {
@@ -259,11 +260,19 @@ const App: React.FC = () => {
   }, [buildLoadedFeeds, stageFeeds]);
 
   const handlePayloadLoaded = useCallback((payload: FeedPayload, sourceLabel = 'api-feed') => {
-    const feeds = Array.isArray(payload) ? payload : [payload];
-    stageFeeds(buildLoadedFeeds(feeds.map((data, index) => ({
-      data,
-      filename: `${sourceLabel}-${index + 1}`
-    }))));
+    const normalizedFeeds = normalizeFeedPayload(payload, sourceLabel);
+    if (normalizedFeeds.length === 0) {
+      console.error('No recognizable items found in the feed payload.');
+      return;
+    }
+    stageFeeds(
+      buildLoadedFeeds(
+        normalizedFeeds.map((data, index) => ({
+          data,
+          filename: normalizedFeeds.length > 1 ? `${sourceLabel}-${index + 1}` : data.feedId || sourceLabel
+        }))
+      )
+    );
   }, [buildLoadedFeeds, stageFeeds]);
 
   const loadFeedFromUrl = useCallback(async (feedUrl: string, sourceLabel = 'api-feed') => {
