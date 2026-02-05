@@ -65,7 +65,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onDataLoaded, isCompact = false
       onDataLoaded(results.flat());
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "An error occurred while processing ledgers.");
+      setError(err.message || "An error occurred while processing feeds.");
     } finally {
       setIsProcessing(false);
       if (fileInputRef.current) {

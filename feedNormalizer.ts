@@ -3,6 +3,7 @@ import { Author, Category, FeedData, FeedItem, FeedPayload } from './types';
 type UnknownRecord = Record<string, unknown>;
 
 const ARRAY_KEYS = ['items', 'articles', 'entries', 'results', 'data', 'stories', 'posts', 'records'];
+const AVERAGE_READING_SPEED_WPM = 200;
 
 const isRecord = (value: unknown): value is UnknownRecord =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -280,7 +281,7 @@ const normalizeFeedItem = (
   }
   let readtime = pickNumber(item['readtime'], item['readTime'], item['read_time']);
   if (!readtime) {
-    readtime = wordcount ? Math.max(1, Math.round(wordcount / 200)) : 0;
+    readtime = wordcount ? Math.max(1, Math.round(wordcount / AVERAGE_READING_SPEED_WPM)) : 0;
   }
 
   const id =
@@ -341,7 +342,7 @@ const normalizeFeedData = (payload: unknown, sourceLabel: string, index: number)
   const { items, meta } = findItems(payload);
   const feedInfo = isRecord(payload) ? payload : meta;
 
-  const fallbackId = `${sourceLabel}${index ? `-${index + 1}` : ''}`;
+  const fallbackId = `${sourceLabel}${index > 0 ? `-${index + 1}` : ''}`;
   const feedId = pickString(
     feedInfo['feedId'],
     feedInfo['id'],
